@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcionPet · Demo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232E8B22'/%3E%3Ccircle cx='22' cy='24' r='5' fill='white'/%3E%3Ccircle cx='42' cy='24' r='5' fill='white'/%3E%3Ccircle cx='15' cy='36' r='4.5' fill='white'/%3E%3Ccircle cx='49' cy='36' r='4.5' fill='white'/%3E%3Cellipse cx='32' cy='42' rx='10' ry='8' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#fff"/><circle cx="22" cy="24" r="5" fill="#2E8B22"/><circle cx="42" cy="24" r="5" fill="#17796F"/><circle cx="15" cy="36" r="4.5" fill="#F59E0B"/><circle cx="49" cy="36" r="4.5" fill="#7C3AED"/><ellipse cx="32" cy="42" rx="10" ry="8" fill="#0E2A33"/></svg>
+        </div>
+        <div class="brand-text">
+          <strong>ArcionPet</strong>
+          <span>Veterinaria · red EISPLUS</span>
+        </div>
+        <button class="bell" id="bell" title="Notificaciones" aria-label="Notificaciones">
+          <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span class="bell-badge" id="bell-badge">0</span>
+        </button>
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="avatar">LG</div>
+        <div class="who"><strong>Dra. Laura Giménez</strong><span>Veterinario/a</span></div>
+        <button class="icon-btn reset" id="reset-demo" title="Reiniciar datos de la demo" aria-label="Reiniciar demo">
+          <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="disclaimer">Herramienta de <b>apoyo</b> al diagnóstico. No sustituye el criterio del médico veterinario, que revisa y firma cada informe.</div>
+      <button class="menu-toggle" id="menu-toggle" aria-label="Menú">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <main class="content" id="view"></main>
+    </div>
+  </div>
+
+  <div class="notif-panel" id="notif-panel" hidden></div>
+
+  <!-- ARCION: asistente flotante -->
+  <button class="arcion-fab" id="arcion-fab" title="Preguntale a ARCION">
+    <svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+    <span>ARCION</span>
+  </button>
+  <section class="arcion-drawer" id="arcion-drawer" hidden></section>
+
+  <div class="modal-backdrop" id="modal" hidden></div>
+  <div class="toast-wrap" id="toasts"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/vendor/tf.min.js"></script>
+  <script src="js/model/test-set.js"></script>
+  <script src="js/model/transfer_mobilenetv2.js"></script>
+  <script src="js/model/transfer_fase1.js"></script>
+  <script src="js/cnn.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/arcion.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
