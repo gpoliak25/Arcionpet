@@ -137,20 +137,54 @@
 
   /* Grad-CAM sobre out_relu. Con la cabeza GAP → Dropout → Dense, el gradiente de la clase respecto de cada
      mapa A_k es constante (w_k,c / HW), por lo que Grad-CAM = Σ_k w_k,c · A_k (sin necesidad de retropropagar). */
+  /* Máscara del área del paciente: excluye el fondo negro, los bordes del detector y las letras de marcado.
+     Umbral de intensidad + suavizado por vecindad (los objetos chicos, como "LLD", desaparecen). */
+  const CAM_RES = 56;
+  const mcv = document.createElement('canvas'); mcv.width = mcv.height = CAM_RES;
+  const mctx = mcv.getContext('2d', { willReadFrequently: true });
+  function mascara(source) {
+    const R = CAM_RES;
+    mctx.clearRect(0, 0, R, R); mctx.drawImage(source, 0, 0, R, R);
+    const d = mctx.getImageData(0, 0, R, R).data, bin = new Float32Array(R * R);
+    for (let i = 0; i < bin.length; i++) bin[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) > 28 ? 1 : 0;
+    const m = new Float32Array(R * R), r = 3;
+    let total = 0;
+    for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) {
+      let s = 0, n = 0;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const yy = y + dy, xx = x + dx;
+        if (yy < 0 || xx < 0 || yy >= R || xx >= R) { n++; continue; } // fuera de la imagen cuenta como fondo
+        s += bin[yy * R + xx]; n++;
+      }
+      const a = s / n, v = a >= 0.7 ? 1 : a <= 0.45 ? 0 : (a - 0.45) / 0.25;
+      m[y * R + x] = v; total += v;
+    }
+    if (total / m.length < 0.15) m.fill(1); // imagen sin fondo negro: no se enmascara
+    return m;
+  }
+  /* Grad-CAM promedio: mismos modelos y espejo que la predicción (para el ensamble, los 2 MobileNetV2 × 2 orientaciones),
+     reescalado a 56×56 y restringido al área del paciente. */
   async function cam(source, clase) {
     const ent = await cargar(activo);
-    if (!ent.camModel) return null;
+    const miembros = ent.ensamble ? ent.miembros : [ent];
+    if (!miembros[0].camModel) return null;
     const ci = clase === 'ok' ? 0 : 1;
-    const x = entrada(source, ent.meta);
+    const mask = mascara(source);
     const res = tf.tidy(() => {
-      const A = ent.camModel.predict(x).squeeze([0]);
-      const W = ent.model.getLayer('dense').getWeights()[0];
-      const Wc = W.slice([0, ci], [-1, 1]).sub(W.slice([0, 1 - ci], [-1, 1])); // contraste entre clases: resalta lo que empuja a "patológica"
-      const [h, w, k] = A.shape;
-      const m = A.reshape([h * w, k]).matMul(Wc).reshape([h, w]).relu();
-      return m.div(m.max().add(1e-6));
+      let acc = null;
+      for (const m of miembros) for (const flip of (ent.ensamble ? [false, true] : [false])) {
+        const A = m.camModel.predict(entrada(source, m.meta, flip)).squeeze([0]);
+        const W = m.model.getLayer('dense').getWeights()[0];
+        const Wc = W.slice([0, ci], [-1, 1]).sub(W.slice([0, 1 - ci], [-1, 1])); // contraste entre clases: resalta lo que empuja a "patológica"
+        const [h, w, k] = A.shape;
+        let c = A.reshape([h * w, k]).matMul(Wc).reshape([h, w]).relu();
+        c = c.div(c.max().add(1e-6));
+        if (flip) c = c.reverse(1); // devolver el mapa del espejo a la orientación original
+        acc = acc ? acc.add(c) : c;
+      }
+      const up = tf.image.resizeBilinear(acc.expandDims(-1), [CAM_RES, CAM_RES], true).squeeze([-1]).mul(tf.tensor2d(mask, [CAM_RES, CAM_RES]));
+      return up.div(up.max().add(1e-6));
     });
-    x.dispose();
     const data = await res.array(); res.dispose();
     return data;
   }

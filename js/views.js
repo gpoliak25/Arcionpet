@@ -409,7 +409,7 @@
       (camDisp ? '<button class="btn sm" id="btn-cam">' + icon('eye') + (ui.cam === id ? 'Ocultar' : 'Ver') + ' Grad-CAM</button>' : '') +
       (!analizando ? '<button class="btn sm ghost" id="btn-re">' + icon('history') + 'Volver a analizar</button>' : '') +
       '<span class="small muted" style="margin-left:auto">Proyección: ' + esc(e.proyeccion || '—') + (e.imagen ? ' · imagen subida' : ref ? ' · conjunto de test del TP' : '') + '</span></div>' +
-      '<div class="cam-legend" id="cam-legend" hidden><span>Menor</span><span class="grad"></span><span>Mayor peso hacia "patológica" (Grad-CAM sobre la última capa convolucional)</span></div>' +
+      '<div class="cam-legend" id="cam-legend" hidden><span>Menor</span><span class="grad"></span><span>Mayor peso hacia "patológica" · Grad-CAM promedio del ensamble, limitado al área del paciente (se excluyen fondo y bordes)</span></div>' +
       '</div><div>' + panel + '</div></div>';
     return {
       html, mount(root) {
@@ -492,27 +492,80 @@
       },
     };
   }
+  /* Hoja de informe firmado: mismo diseño en pantalla y al imprimir (una página A4). */
+  function cuerpoInforme(texto) {
+    const out = [];
+    let parrafo = [];
+    const cerrar = () => { if (parrafo.length) { out.push('<p>' + esc(parrafo.join(' ')) + '</p>'); parrafo = []; } };
+    texto.split(/\r?\n/).forEach((linea, i) => {
+      const l = linea.trim();
+      if (!l) { cerrar(); return; }
+      if (i === 0 && /^INFORME\b/i.test(l)) return; // el título ya está en el encabezado
+      if (/^(Paciente|Motivo de consulta|Resultado IA):/i.test(l)) return; // se muestran en la ficha y en el recuadro de IA
+      if (l.length >= 4 && l === l.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(l) && !/[.:;]$/.test(l)) { cerrar(); out.push('<h3>' + esc(l.charAt(0) + l.slice(1).toLowerCase()) + '</h3>'); return; }
+      parrafo.push(l);
+    });
+    cerrar();
+    return out.join('');
+  }
+  function hojaInforme(inf, e, p) {
+    const t = Store.tutor(p.tutorId) || {};
+    const ev = S().evaluaciones.find((q) => q.estudioId === e.id);
+    const VER = { coincide: 'Coincide con la IA', corrige: 'Corrige el resultado de la IA', descarta: 'Descarta el resultado de la IA' };
+    const col = { normal: '#059669', incierto: '#D97706', patologico: '#DC2626' }[e.resultado] || '#64748B';
+    const dato = (k, v) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>';
+    return '<article class="report-sheet">' +
+      '<header class="rs-head"><div class="rs-brand"><img class="rs-logo" src="assets/logo-icono.png" alt=""><div><img class="rs-wordmark" src="assets/logo-texto.png" alt="ArcionPet"><span>Veterinaria · red EISPLUS</span></div></div>' +
+      '<div class="rs-title"><h2>Informe radiológico</h2><span>N.º ' + esc(inf.id.toUpperCase()) + ' · ' + fDate(inf.fechaFirma || inf.fecha) + '</span></div></header>' +
+      '<dl class="rs-ficha">' +
+      dato('Paciente', '<b>' + esc(p.nombre) + '</b>') + dato('Especie / raza', esc(p.especie + ' · ' + p.raza)) + dato('Edad / sexo', esc(Store.edad(p.nacimiento) + ' · ' + p.sexo) + (p.peso ? ' · ' + p.peso + ' kg' : '')) + dato('Tutor', esc((t.nombre || '') + ' ' + (t.apellido || ''))) +
+      dato('Estudio', esc(e.tipo + (e.proyeccion ? ' · ' + e.proyeccion : ''))) + dato('Fecha del estudio', fDate(e.fecha)) + dato('Motivo de consulta', esc(e.motivo)) +
+      '</dl>' +
+      '<section class="rs-media"><figure><img src="' + UI.srcEstudio(e) + '" alt="Radiografía"><figcaption>' + esc(e.tipo + (e.proyeccion ? ' · ' + e.proyeccion : '') + ' · ' + fDate(e.fecha)) + '</figcaption></figure>' +
+      '<aside class="rs-ia"><div class="rs-ia-k">Análisis asistido por IA</div>' +
+      '<div class="rs-ia-res" style="color:' + col + '">' + (Store.RES_LABEL[e.resultado] || '—') + '</div>' +
+      '<div class="rs-ia-bar"><div style="width:' + (e.confianza || 0) + '%;background:' + col + '"></div></div>' +
+      '<div class="rs-ia-p">' + (e.confianza != null ? e.confianza + '% probabilidad de patología' : '') + '</div>' +
+      (e.modelo ? '<div class="rs-ia-m">' + esc(e.modelo.nombre) + '</div>' : '') +
+      (ev ? '<div class="rs-ia-v"><b>Veredicto profesional:</b> ' + VER[ev.veredicto] + (ev.correccion ? ' — ' + esc(ev.correccion) : '') + '</div>' : '') +
+      '<p class="rs-ia-n">Resultado orientativo. El diagnóstico es el que firma el médico veterinario.</p></aside></section>' +
+      '<section class="rs-body">' + cuerpoInforme(inf.texto || '') + '</section>' +
+      '<footer class="rs-foot"><div class="rs-firma"><div class="rs-firma-line"></div><b>' + esc(inf.firmadoPor) + '</b><span>Médica veterinaria</span><span class="rs-firma-d">' + icon('pen') + ' Firmado digitalmente el ' + fDate(inf.fechaFirma) + ' a las ' + fTime(inf.fechaFirma) + '</span></div>' +
+      '<p class="rs-legal">Informe emitido con ArcionPet. La herramienta de IA es de apoyo al diagnóstico y no sustituye el criterio del médico veterinario.</p></footer>' +
+      '</article>';
+  }
   function informeDetalle(id) {
     const inf = S().informes.find((i) => i.id === id);
     if (!inf) return { html: empty('file', 'Informe no encontrado', ''), mount() {} };
     const e = Store.estudio(inf.estudioId), p = Store.paciente(e.pacienteId);
     const texto = inf.texto || Store.borradorInforme(e);
     const firmado = inf.estado === 'firmado';
+    if (firmado) return {
+      html: '<a href="#/informes" class="btn ghost sm" style="margin-bottom:12px">← Informes</a>' +
+        pageHead('file', 'Informe de ' + esc(p.nombre), esc(e.tipo) + ' · ' + fDate(e.fecha) + ' · Firmado',
+          '<button class="btn" id="btn-dl">' + icon('download') + 'Descargar texto</button><button class="btn primary" id="btn-print">' + icon('file') + 'Imprimir / guardar PDF</button>') +
+        hojaInforme(inf, e, p),
+      mount(root) {
+        root.querySelector('#btn-dl').onclick = () => download('informe-' + p.nombre.toLowerCase() + '-' + fDate(e.fecha).replace(/\//g, '-') + '.txt', inf.texto + '\n\nFirmado por ' + inf.firmadoPor + ' · ' + fDate(inf.fechaFirma), 'text/plain');
+        root.querySelector('#btn-print').onclick = () => {
+          const prev = document.title; // el título se usa como nombre sugerido del PDF
+          document.title = 'Informe ' + p.nombre + ' ' + fDate(e.fecha).replace(/\//g, '-');
+          window.print();
+          setTimeout(() => { document.title = prev; }, 500);
+        };
+      },
+    };
     const html = '<a href="#/informes" class="btn ghost sm" style="margin-bottom:12px">← Informes</a>' +
-      pageHead('file', 'Informe de ' + esc(p.nombre), esc(e.tipo) + ' · ' + fDate(e.fecha) + ' · ' + (firmado ? 'Firmado' : 'Borrador generado con IA · confianza ' + NIVEL[inf.nivel].toLowerCase()),
-        firmado ? '<button class="btn" id="btn-dl">' + icon('download') + 'Descargar</button><button class="btn" onclick="window.print()">Imprimir</button>' : '') +
+      pageHead('file', 'Informe de ' + esc(p.nombre), esc(e.tipo) + ' · ' + fDate(e.fecha) + ' · Borrador generado con IA · confianza ' + NIVEL[inf.nivel].toLowerCase()) +
       '<div class="study-layout"><div>' + xrayHtml(e) + '<div style="margin-top:12px;display:flex;gap:10px;align-items:center">' + resBadge(e.resultado) + '<span class="small muted">' + e.confianza + '% probabilidad de patología</span><a class="small" href="#/estudios/' + e.id + '" style="margin-left:auto">Ver estudio →</a></div></div>' +
       '<div class="card card-pad">' +
-      (firmado
-        ? '<pre class="report-text" style="margin:0">' + esc(inf.texto) + '</pre><div class="signature">' + icon('pen') + ' Firmado digitalmente por <b>' + esc(inf.firmadoPor) + '</b> el ' + fDate(inf.fechaFirma) + ' a las ' + fTime(inf.fechaFirma) + '</div>'
-        : '<div class="callout amber" style="margin-bottom:14px">' + icon('alert') + '<span>Borrador generado por IA. Sigue en borrador hasta que lo revises y lo firmes.</span></div>' +
+      ('<div class="callout amber" style="margin-bottom:14px">' + icon('alert') + '<span>Borrador generado por IA. Sigue en borrador hasta que lo revises y lo firmes.</span></div>' +
           '<div class="field"><label>Texto del informe (editable)</label><textarea id="inf-txt" style="min-height:380px;font-size:14px;line-height:1.55">' + esc(texto) + '</textarea></div>' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn" id="btn-save">Guardar borrador</button><button class="btn" id="btn-regen">' + icon('spark') + 'Regenerar</button><button class="btn primary" id="btn-sign" style="margin-left:auto">' + icon('pen') + 'Revisar y firmar</button></div>') +
       '</div></div>';
     return {
       html, mount(root) {
         mountXrays(root);
-        if (firmado) { root.querySelector('#btn-dl').onclick = () => download('informe-' + p.nombre.toLowerCase() + '-' + fDate(e.fecha).replace(/\//g, '-') + '.txt', inf.texto + '\n\nFirmado por ' + inf.firmadoPor + ' · ' + fDate(inf.fechaFirma), 'text/plain'); return; }
         const ta = root.querySelector('#inf-txt');
         root.querySelector('#btn-save').onclick = () => { A.guardarTexto(id, ta.value); toast('Borrador guardado'); };
         root.querySelector('#btn-regen').onclick = () => confirmModal('Regenerar borrador', 'Se reemplazará el texto actual por un nuevo borrador de la IA.', 'Regenerar', () => { A.generarInforme(e.id); toast('Borrador regenerado'); });
