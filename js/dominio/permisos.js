@@ -24,6 +24,10 @@
     informes:        ['todo',     'ver',      'ninguno',  'ver'],
     derivaciones:    ['todo',     'ver',      'ninguno',  'ver'],
     inventario:      ['editar',   'editar',   'ver',      'todo'],
+    petshop:         ['ver',      'editar',   'ver',      'todo'],
+    farmacia:        ['editar',   'editar',   'ninguno',  'todo'],
+    recetas:         ['todo',     'ver',      'ninguno',  'ver'],
+    configuracion:   ['ninguno',  'ninguno',  'ninguno',  'todo'],
     ventas:          ['editar',   'editar',   'editar',   'todo'],
     turnos:          ['editar',   'todo',     'ninguno',  'ver'],
     peluqueria:      ['ninguno',  'todo',     'editar',   'ver'],
@@ -31,7 +35,7 @@
     arcion:          ['ver',      'ver',      'ver',      'ver'],
     calidad:         ['ver',      'ninguno',  'ninguno',  'ver'],
     analitica:       ['ver',      'ninguno',  'ninguno',  'ver'],
-    modelo:          ['todo',     'ninguno',  'ninguno',  'ver'],
+    modelo:          ['ninguno',  'ninguno',  'ninguno',  'todo'], // Modelo CNN: solo administración
   };
   const ORDEN = ['veterinario', 'recepcion', 'peluqueria', 'administracion'];
 

@@ -33,8 +33,9 @@
   const vencido = (l, hoy) => !!l.vence && diasHasta(l.vence, hoy) < 0;
 
   /* Stock total, vendible (sin vencidos), próximo vencimiento y alertas de un producto. */
-  function estado(producto, lotes, hoy) {
+  function estado(producto, lotes, hoy, diasAviso) {
     const h = hoy || new Date();
+    const aviso = diasAviso == null ? DIAS_AVISO_FARMACIA : diasAviso;
     const ls = lotesDe(producto.id, lotes).filter((l) => l.cantidad > 0);
     const total = ls.reduce((s, l) => s + l.cantidad, 0);
     const vencidos = ls.filter((l) => vencido(l, h));
@@ -42,7 +43,7 @@
     const conVence = ls.filter((l) => l.vence && !vencido(l, h)).sort((a, b) => a.vence.localeCompare(b.vence));
     const proximo = conVence[0] || null;
     const diasProximo = proximo ? diasHasta(proximo.vence, h) : null;
-    const porVencer = producto.catalogo === 'farmacia' && proximo && diasProximo <= DIAS_AVISO_FARMACIA;
+    const porVencer = producto.catalogo === 'farmacia' && proximo && diasProximo <= aviso;
     return {
       total, vendible, vencidos: vencidos.reduce((s, l) => s + l.cantidad, 0),
       sinStock: vendible <= 0, bajoMinimo: vendible <= (producto.stockMinimo || 0),

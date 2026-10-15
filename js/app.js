@@ -9,6 +9,8 @@
     { id: 'clinica', g: 'Clínica', items: [
       { h: '#/pacientes', l: 'Pacientes', i: 'paw', m: 'pacientes' },
       { h: '#/tutores', l: 'Tutores', i: 'users', m: 'tutores' },
+    ] },
+    { id: 'banco', g: 'Banco de sangre', items: [
       { h: '#/hemocomponentes', l: 'Hemocomponentes', i: 'drop', m: 'hemocomponentes', c: () => Store.hemoAlertas().length, hot: true },
     ] },
     { id: 'diagnostico', g: 'Diagnóstico con IA', items: [
@@ -17,11 +19,13 @@
       { h: '#/informes', l: 'Informes', i: 'file', m: 'informes', c: () => S().informes.filter((i) => i.estado === 'borrador').length },
       { h: '#/derivaciones', l: 'Derivaciones', i: 'stetho', m: 'derivaciones', c: () => S().derivaciones.filter((d) => d.estado === 'pendiente').length },
     ] },
-    { id: 'inventario', g: 'Inventario y ventas', items: [
-      { h: '#/ventas', l: 'Ventas', i: 'cart', m: 'ventas' },
-      { h: '#/inventario', l: 'Inventario', i: 'package', m: 'inventario', c: () => { const a = Store.inventarioAlertas(); return a.bajoMinimo.length + a.porVencer.length + a.vencidos.length + a.declaraciones.length; }, hot: true },
+    { id: 'inventario', g: 'Inventario y ventas', modulo: 'inventario', items: [
+      { h: '#/petshop', l: 'Pet shop', i: 'package', m: 'petshop', c: () => Store.inventarioAlertas().bajoMinimo.filter((p) => p.catalogo === 'petshop').length },
+      { h: '#/farmacia', l: 'Farmacia', i: 'drop', m: 'farmacia', c: () => { const a = Store.inventarioAlertas(); return a.bajoMinimo.filter((p) => p.catalogo === 'farmacia').length + a.porVencer.length + a.vencidos.length + a.declaraciones.length; }, hot: true },
+      { h: '#/ventas', l: 'Ventas', i: 'cart', m: 'ventas', rutas: ['ventas'] },
+      { h: '#/recetas', l: 'Recetas (RVE)', i: 'file', m: 'recetas' },
     ] },
-    { id: 'servicios', g: 'Servicios', items: [
+    { id: 'servicios', g: 'Servicios', modulo: 'servicios', items: [
       { h: '#/turnos', l: 'Turnos', i: 'calendar', m: 'turnos', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
     ] },
     { id: 'red', g: 'Red y gestión', items: [
@@ -31,7 +35,12 @@
       { h: '#/analitica', l: 'Analítica', i: 'chart', m: 'analitica' },
       { h: '#/modelo', l: 'Modelo CNN', i: 'brain', m: 'modelo' },
     ] },
+    { id: 'config', g: 'Configuración', items: [
+      { h: '#/configuracion', l: 'Configuración', i: 'settings', m: 'configuracion' },
+    ] },
   ];
+  /* Rutas que pertenecen a un módulo opcional (se ocultan si está deshabilitado en Configuración). */
+  const MODULO_OPCIONAL = { petshop: 'inventario', farmacia: 'inventario', inventario: 'inventario', ventas: 'inventario', recetas: 'inventario', turnos: 'servicios' };
   const PLEGADAS_KEY = 'arcionpet-nav-plegadas';
   let plegadas = [];
   try { plegadas = JSON.parse(localStorage.getItem(PLEGADAS_KEY) || '[]'); } catch (e) { /* sin storage */ }
@@ -40,6 +49,10 @@
     inicio: () => Views.inicio(),
     pacientes: () => Views.pacientes(),
     inventario: () => Views.inventario(),
+    petshop: () => Views.inventario('petshop'),
+    farmacia: () => Views.inventario('farmacia'),
+    recetas: () => Views.ventas('recetas'),
+    configuracion: () => Views.configuracion(),
     ventas: (id) => (id === 'nueva' ? Views.ventaNueva() : Views.ventas()),
     tutores: (id) => (id ? Views.tutorDetalle(id) : Views.tutores()),
     turnos: () => Views.turnos(),
@@ -57,7 +70,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', ventas: 'ventas', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', petshop: 'petshop', farmacia: 'farmacia', recetas: 'recetas', configuracion: 'configuracion', ventas: 'ventas', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();
@@ -72,6 +85,7 @@
   function renderNav() {
     const actual = parse().name;
     const html = AREAS.map((area) => {
+      if (area.modulo && !Store.moduloHabilitado(area.modulo)) return '';
       const items = area.items.filter((n) => Store.puede(n.m));
       if (!items.length) return '';
       const activa = items.some((n) => (n.rutas || [n.h.slice(2)]).includes(actual));
@@ -120,7 +134,7 @@
     UI.openModal({
       title: 'Cambiar de rol',
       body: '<p class="muted" style="margin-top:0">Selector de la demo para ver el sistema con los permisos de cada rol.</p>' +
-        S().usuarios.map((u) => '<div class="list-row clickable" data-u="' + u.id + '" style="border-radius:10px' + (u.id === act ? ';background:var(--green-soft)' : '') + '"><div class="avatar" data-rol="' + u.rol + '">' + esc(u.iniciales) + '</div><div class="grow"><div class="t">' + esc(u.nombre) + ' · ' + esc(Dominio.permisos.ROLES[u.rol]) + '</div><div class="s">' + esc(DESC_ROL[u.rol]) + '</div></div>' + (u.id === act ? '<span class="badge b-normal">Activo</span>' : '') + '</div>').join(''),
+        S().usuarios.filter((u) => u.activo !== false).map((u) => '<div class="list-row clickable" data-u="' + u.id + '" style="border-radius:10px' + (u.id === act ? ';background:var(--green-soft)' : '') + '"><div class="avatar" data-rol="' + u.rol + '">' + esc(u.iniciales) + '</div><div class="grow"><div class="t">' + esc(u.nombre) + ' · ' + esc(Dominio.permisos.ROLES[u.rol]) + '</div><div class="s">' + esc(DESC_ROL[u.rol]) + '</div></div>' + (u.id === act ? '<span class="badge b-normal">Activo</span>' : '') + '</div>').join(''),
       onMount(m) {
         m.querySelectorAll('[data-u]').forEach((r) => r.onclick = () => {
           UI.closeModal();
@@ -143,7 +157,7 @@
     const routeKey = name + '/' + (id || '');
     const scroll = routeKey === lastRoute ? window.scrollY : 0;
     let v;
-    try { v = Store.puede(MODULO[name]) ? ROUTES[name](id) : sinAcceso(); } catch (e) { console.error(e); v = { html: '<div class="callout red">Ocurrió un error al mostrar esta pantalla.</div>', mount() {} }; }
+    try { v = Store.puede(MODULO[name]) && Store.moduloHabilitado(MODULO_OPCIONAL[name]) ? ROUTES[name](id) : sinAcceso(); } catch (e) { console.error(e); v = { html: '<div class="callout red">Ocurrió un error al mostrar esta pantalla.</div>', mount() {} }; }
     view.innerHTML = v.html;
     v.mount(view);
     renderNav();

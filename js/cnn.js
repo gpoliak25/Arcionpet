@@ -30,7 +30,10 @@
   };
   /* Umbrales sobre P(patológica). 0.30 es el punto de operación que eligió el TP (recall 0.80 en test):
      desde ahí el estudio se considera patológico. La franja 0.20–0.30 queda como "incierto" (cerca del umbral). */
-  const UMBRAL_INCIERTO = 0.20, UMBRAL_PATOLOGICO = 0.30;
+  const UMBRAL_INCIERTO_DEF = 0.20, UMBRAL_PATOLOGICO_DEF = 0.30;
+  // umbrales configurables por la clínica (Configuración); se aplican a los análisis nuevos
+  const umbral = (k, def) => { const u = window.Store && Store.s && Store.s.config && Store.s.config.umbrales; return u && typeof u[k] === 'number' ? u[k] : def; };
+  const UI_ = { get incierto() { return umbral('incierto', UMBRAL_INCIERTO_DEF); }, get patologico() { return umbral('patologico', UMBRAL_PATOLOGICO_DEF); } };
   const ACTIVO_KEY = 'arcionpet-cnn-activo-v2', CABEZA_KEY = 'arcionpet-cnn-cabeza', EVAL_KEY = 'arcionpet-cnn-eval-v2';
 
   const cargados = {}; // clave -> { model, camModel, featModel }
@@ -128,7 +131,7 @@
   }
   function interpretar(probs) {
     const p = probs.patologica;
-    const resultado = p >= UMBRAL_PATOLOGICO ? 'patologico' : p >= UMBRAL_INCIERTO ? 'incierto' : 'normal';
+    const resultado = p >= UI_.patologico ? 'patologico' : p >= UI_.incierto ? 'incierto' : 'normal';
     return {
       resultado, probPatologia: Math.round(p * 100), // probabilidad de la clase patológica, no la certeza del modelo
       hallazgos: resultado === 'normal' ? [] : [resultado === 'patologico' ? 'Patrón radiológico torácico compatible con patología' : 'Hallazgo torácico de significado incierto'],
@@ -230,7 +233,7 @@
       y.push(t.clase === 'patologica' ? 1 : 0); p.push(pr.patologica); porImagen.push([t.id, +pr.patologica.toFixed(4)]);
       onProgress && onProgress(i + 1, TEST_SET.length);
     }
-    const r = { clave, n: y.length, positivos: y.filter(Boolean).length, auc: auc(y, p), m50: metricas(y, p, 0.5), m30: metricas(y, p, UMBRAL_PATOLOGICO), porImagen, fecha: new Date().toISOString() };
+    const r = { clave, n: y.length, positivos: y.filter(Boolean).length, auc: auc(y, p), m50: metricas(y, p, 0.5), m30: metricas(y, p, UI_.patologico), porImagen, fecha: new Date().toISOString() };
     cache[firma] = r; lsSet(EVAL_KEY, JSON.stringify(cache));
     return r;
   }
@@ -285,7 +288,7 @@
         const pr = await predictCon(ent, await cargarImg(TEST_SET[i].src));
         y.push(TEST_SET[i].clase === 'patologica' ? 1 : 0); p.push(pr.patologica); onProgress && onProgress(i + 1, TEST_SET.length);
       }
-      return { auc: auc(y, p), m50: metricas(y, p, 0.5), m30: metricas(y, p, UMBRAL_PATOLOGICO), n: y.length };
+      return { auc: auc(y, p), m50: metricas(y, p, 0.5), m30: metricas(y, p, UI_.patologico), n: y.length };
     } finally { dense.setWeights(prev); }
   }
   async function adoptarCabeza(res) {
@@ -320,7 +323,7 @@
 
   window.CNN = {
     ensure, cargar, predict, interpretar, cam, paintCam, evaluar, reentrenar, evaluarCabeza, adoptarCabeza, restaurarCabeza, usar, info,
-    CATALOGO, SIZE, UMBRAL_INCIERTO, UMBRAL_PATOLOGICO,
+    CATALOGO, SIZE, get UMBRAL_INCIERTO() { return UI_.incierto; }, get UMBRAL_PATOLOGICO() { return UI_.patologico; },
     get activo() { return activo; }, get listo() { return !!cargados[activo]; },
   };
 })();

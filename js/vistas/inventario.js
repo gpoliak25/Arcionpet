@@ -30,9 +30,10 @@
   const etiquetas = (p) => (p.requiereReceta ? ' <span class="badge b-violet" title="Venta bajo receta veterinaria electrónica">Receta</span>' : '') + (p.sigtrazavet ? ' <span class="badge b-blue" title="Alcanzado por SIGTRAZAVET (Res. SENASA 654/2026)">SIGTRAZAVET</span>' : '');
 
   /* =========================================================== INVENTARIO */
-  function inventario() {
+  function inventario(catFijo) {
+    if (catFijo) ui.invCat = catFijo;
     const cat = catalogoActual();
-    const editar = Store.puede('inventario', 'editar');
+    const editar = Store.puede(cat, 'editar');
     const admin = Store.puedeAccion('editarPrecios');
     const ajustar = Store.puedeAjustarStock(cat);
     const prods = S().productos.filter((p) => p.catalogo === cat && p.activo !== false);
@@ -47,7 +48,7 @@
     const bajo = prods.filter((p) => est[p.id].bajoMinimo);
     const decl = cat === 'farmacia' ? al.declaraciones : [];
 
-    const tabs = Store.catalogosVisibles().length > 1
+    const tabs = !catFijo && Store.catalogosVisibles().length > 1
       ? '<div class="tabs">' + Store.catalogosVisibles().map((c) => '<button data-cat="' + c + '" class="' + (c === cat ? 'on' : '') + '">' + I().CATALOGOS[c] + '</button>').join('') + '</div>' : '';
     const rows = lista.map((p) => {
       const e = est[p.id];
@@ -58,7 +59,8 @@
         '<td class="actions">' + (editar ? '<button class="icon-btn" data-ing="' + p.id + '" title="Ingresar mercadería">' + icon('plus') + '</button>' : '') + '<button class="icon-btn" title="Ver detalle">' + icon('eye') + '</button></td></tr>';
     }).join('');
 
-    const html = pageHead('package', 'Inventario', 'Stock unificado de pet shop y farmacia veterinaria. Precios con IVA incluido.',
+    const titulo = !catFijo ? ['Inventario', 'Stock unificado de pet shop y farmacia veterinaria. Precios con IVA incluido.'] : cat === 'farmacia' ? ['Farmacia', 'Antiparasitarios, medicamentos, vacunas e insumos: lotes, vencimientos y venta bajo receta. Precios con IVA incluido.'] : ['Pet shop', 'Alimentos, correas y accesorios, ropa y juguetes. Precios con IVA incluido.'];
+    const html = pageHead(cat === 'farmacia' && catFijo ? 'drop' : 'package', titulo[0], titulo[1],
       (editar ? '<button class="btn" id="btn-ing">' + icon('plus') + 'Ingresar mercadería</button>' : '') + (admin ? '<button class="btn primary" id="btn-prod">' + icon('plus') + 'Nuevo producto</button>' : '')) +
       tabs +
       '<div class="grid kpis">' +
