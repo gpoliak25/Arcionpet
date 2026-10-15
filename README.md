@@ -47,13 +47,34 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 - ARCION responde con datos reales de la demo, usando reconocimiento de intenciones local.
 - Las fechas de los datos de ejemplo se calculan a partir del día de hoy, así la demo siempre se ve vigente.
 
+## Roles (demo)
+
+Tocá el usuario abajo a la izquierda para cambiar de rol: **Veterinario/a**, **Recepción**, **Peluquería** o **Administración**. El menú, las rutas, el Inicio, las notificaciones y ARCION se adaptan a los permisos de cada rol (matriz en `js/dominio/permisos.js`). La firma de informes es exclusiva del veterinario. Son permisos de interfaz: sin backend no hay seguridad real.
+
+## Datos y migraciones
+
+Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un número de versión de esquema. Al abrir una versión nueva de la app, los datos se **migran** (`js/dominio/migraciones.js`) y antes se guarda una copia intacta en `arcionpet-demo:backup:v<versión>`. Cada migración tiene vuelta atrás. Desde la consola del navegador:
+
+- `Store.A.revertirA(8)`: revierte el esquema a la versión 8.
+- `Store.A.restaurarBackup('v8')`: restaura la copia guardada antes de migrar.
+
+## Tests
+
+```
+npm test
+```
+
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos) y permisos.
+
 ## Estructura
 
 ```
+tests/            tests de la lógica de negocio
 index.html        estructura y menú
 css/styles.css    estilos (mismo look que las capturas de la presentación)
 js/data.js        datos de ejemplo
-js/store.js       estado, persistencia y métricas
+js/dominio/       lógica de negocio pura (migraciones, permisos), testeada con node --test
+js/store.js       estado, persistencia, migraciones y métricas
 js/cnn.js         carga de los modelos, inferencia, Grad-CAM, evaluación y reentrenamiento
 js/model/         modelos del TP convertidos a TensorFlow.js + conjunto de test (incrustados para funcionar sin servidor)
 js/vendor/        TensorFlow.js 4.22
