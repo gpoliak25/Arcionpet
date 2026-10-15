@@ -3,32 +3,40 @@
   const { icon, esc, toast, confirmModal } = UI;
   const S = () => Store.s;
 
-  const NAV = [
-    { h: '#/inicio', l: 'Inicio', m: 'inicio', i: 'home' },
-    { g: 'Clínica' },
-    { h: '#/pacientes', l: 'Pacientes', m: 'pacientes', i: 'paw' },
-    { h: '#/turnos', l: 'Turnos', m: 'turnos', i: 'calendar', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
-    { g: 'Diagnóstico' },
-    { h: '#/estudios', l: 'Estudios', m: 'imagenes', i: 'scan' },
-    { h: '#/triage', l: 'Triage', m: 'triage', i: 'triage', c: () => Store.triage().filter((r) => r.prioridad === 'urgente').length, hot: true },
-    { h: '#/informes', l: 'Informes', m: 'informes', i: 'file', c: () => S().informes.filter((i) => i.estado === 'borrador').length },
-    { h: '#/derivaciones', l: 'Derivaciones', m: 'derivaciones', i: 'stetho', c: () => S().derivaciones.filter((d) => d.estado === 'pendiente').length },
-    { g: 'Red EISPLUS' },
-    { h: '#/interconsultas', l: 'Interconsultas', m: 'interconsultas', i: 'chat', c: () => S().interconsultas.filter((i) => i.noLeida).length },
-    { h: '#/hemocomponentes', l: 'Hemocomponentes', m: 'hemocomponentes', i: 'drop', c: () => Store.hemoAlertas().length, hot: true },
-    { g: 'Gestión' },
-    { h: '#/calidad', l: 'Control de calidad', m: 'calidad', i: 'clipboard' },
-    { h: '#/analitica', l: 'Analítica', m: 'analitica', i: 'chart' },
-    { h: '#/modelo', l: 'Modelo CNN', m: 'modelo', i: 'brain' },
-    { g: 'Asistente' },
-    { h: '#/arcion', l: 'ARCION', m: 'arcion', i: 'spark' },
+  /* Navegación en 5 áreas. Cada ítem indica su módulo de permisos (m) y las rutas que lo activan. */
+  const AREAS = [
+    { items: [{ h: '#/inicio', l: 'Inicio', i: 'home', m: 'inicio' }] },
+    { id: 'clinica', g: 'Clínica', items: [
+      { h: '#/pacientes', l: 'Pacientes', i: 'paw', m: 'pacientes' },
+      { h: '#/hemocomponentes', l: 'Hemocomponentes', i: 'drop', m: 'hemocomponentes', c: () => Store.hemoAlertas().length, hot: true },
+    ] },
+    { id: 'diagnostico', g: 'Diagnóstico con IA', items: [
+      { h: '#/estudios', l: 'Imágenes', i: 'scan', m: 'imagenes', rutas: ['estudios', 'imagenes'] },
+      { h: '#/triage', l: 'Triage', i: 'triage', m: 'triage', c: () => Store.triage().filter((r) => r.prioridad === 'urgente').length, hot: true },
+      { h: '#/informes', l: 'Informes', i: 'file', m: 'informes', c: () => S().informes.filter((i) => i.estado === 'borrador').length },
+      { h: '#/derivaciones', l: 'Derivaciones', i: 'stetho', m: 'derivaciones', c: () => S().derivaciones.filter((d) => d.estado === 'pendiente').length },
+    ] },
+    { id: 'servicios', g: 'Servicios', items: [
+      { h: '#/turnos', l: 'Turnos', i: 'calendar', m: 'turnos', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
+    ] },
+    { id: 'red', g: 'Red y gestión', items: [
+      { h: '#/interconsultas', l: 'Interconsultas', i: 'chat', m: 'interconsultas', c: () => S().interconsultas.filter((i) => i.noLeida).length },
+      { h: '#/arcion', l: 'ARCION Pet', i: 'spark', m: 'arcion' },
+      { h: '#/calidad', l: 'Control de calidad', i: 'clipboard', m: 'calidad' },
+      { h: '#/analitica', l: 'Analítica', i: 'chart', m: 'analitica' },
+      { h: '#/modelo', l: 'Modelo CNN', i: 'brain', m: 'modelo' },
+    ] },
   ];
+  const PLEGADAS_KEY = 'arcionpet-nav-plegadas';
+  let plegadas = [];
+  try { plegadas = JSON.parse(localStorage.getItem(PLEGADAS_KEY) || '[]'); } catch (e) { /* sin storage */ }
 
   const ROUTES = {
     inicio: () => Views.inicio(),
     pacientes: () => Views.pacientes(),
     turnos: () => Views.turnos(),
     estudios: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()),
+    imagenes: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()), // alias del nombre nuevo del módulo
     triage: () => Views.triage(),
     informes: (id) => (id ? Views.informeDetalle(id) : Views.informes()),
     derivaciones: () => Views.derivaciones(),
@@ -41,7 +49,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', turnos: 'turnos', estudios: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();
@@ -54,15 +62,31 @@
   }
 
   function renderNav() {
-    const cur = '#/' + parse().name;
-    // se ocultan los ítems sin permiso y los títulos de grupo que quedan vacíos
-    const visibles = NAV.filter((n) => n.g || Store.puede(n.m));
-    const items = visibles.filter((n, i) => !n.g || (visibles[i + 1] && !visibles[i + 1].g));
-    document.getElementById('nav').innerHTML = items.map((n) => {
-      if (n.g) return '<div class="nav-group">' + n.g + '</div>';
-      const c = n.c ? n.c() : 0;
-      return '<a class="nav-item' + (cur === n.h ? ' active' : '') + '" href="' + n.h + '">' + icon(n.i) + '<span>' + n.l + '</span>' + (c ? '<span class="count' + (n.hot ? ' hot' : '') + '">' + c + '</span>' : '') + '</a>';
+    const actual = parse().name;
+    const html = AREAS.map((area) => {
+      const items = area.items.filter((n) => Store.puede(n.m));
+      if (!items.length) return '';
+      const activa = items.some((n) => (n.rutas || [n.h.slice(2)]).includes(actual));
+      const cerrada = area.id && plegadas.includes(area.id) && !activa;
+      const links = items.map((n) => {
+        const c = n.c ? n.c() : 0;
+        const on = (n.rutas || [n.h.slice(2)]).includes(actual);
+        return '<a class="nav-item' + (on ? ' active' : '') + '" href="' + n.h + '">' + icon(n.i) + '<span>' + n.l + '</span>' + (c ? '<span class="count' + (n.hot ? ' hot' : '') + '">' + c + '</span>' : '') + '</a>';
+      }).join('');
+      if (!area.id) return links;
+      const total = cerrada ? items.reduce((t, n) => t + (n.c ? n.c() : 0), 0) : 0;
+      return '<div class="nav-area' + (cerrada ? ' cerrada' : '') + '"><button class="nav-group" data-area="' + area.id + '" aria-expanded="' + !cerrada + '">' +
+        '<span>' + area.g + '</span>' + (total ? '<span class="count">' + total + '</span>' : '') + '<svg viewBox="0 0 24 24" class="chev"><path d="m6 9 6 6 6-6"/></svg></button>' +
+        '<div class="nav-items">' + links + '</div></div>';
     }).join('');
+    const nav = document.getElementById('nav');
+    nav.innerHTML = html;
+    nav.querySelectorAll('[data-area]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.area;
+      plegadas = plegadas.includes(id) ? plegadas.filter((x) => x !== id) : plegadas.concat(id);
+      try { localStorage.setItem(PLEGADAS_KEY, JSON.stringify(plegadas)); } catch (e) { /* sin storage */ }
+      renderNav();
+    }));
     const nn = notificaciones().length, b = document.getElementById('bell-badge');
     b.textContent = nn; b.classList.toggle('zero', !nn);
     renderUsuario();

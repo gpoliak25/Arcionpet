@@ -70,7 +70,7 @@ Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin p�
 
 ```
 tests/            tests de la lógica de negocio
-index.html        estructura y menú
+index.html        estructura (el menú en 5 áreas plegables se arma en js/app.js)
 css/styles.css    estilos (mismo look que las capturas de la presentación)
 js/data.js        datos de ejemplo
 js/dominio/       lógica de negocio pura (migraciones, permisos), testeada con node --test
@@ -79,7 +79,7 @@ js/cnn.js         carga de los modelos, inferencia, Grad-CAM, evaluación y reen
 js/model/         modelos del TP convertidos a TensorFlow.js + conjunto de test (incrustados para funcionar sin servidor)
 js/vendor/        TensorFlow.js 4.22
 js/ui.js          íconos, modales, avisos y visor de radiografías
-js/views.js       pantallas
+js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, servicios, red)
 js/arcion.js      asistente ARCION
 js/app.js         navegación y notificaciones
 ```
