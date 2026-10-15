@@ -188,6 +188,24 @@
         return s;
       },
     },
+    {
+      de: 13, a: 14, descripcion: 'Configuración: módulos habilitados, umbrales, datos de la clínica y usuarios activos',
+      up(s) {
+        s.config = Object.assign({}, s.config, {
+          modulos: { inventario: true, servicios: true, peluqueria: true, aliados: true },
+          compartirAliadosRed: false,
+          umbrales: { incierto: 0.20, patologico: 0.30, avisoFarmacia: 30, avisoHemo: 7 },
+          clinica: { nombre: 'Veterinaria ArcionPet (ejemplo)', razonSocial: 'ArcionPet Demo S.A. (ficticia)', cuit: '30-99999999-7', condicionIva: 'Responsable inscripto', domicilio: 'Av. Siempreviva 742, CABA', telefono: '11 5555-0000', email: 'contacto@example.com', habilitacion: '' },
+        });
+        s.usuarios = s.usuarios.map((u) => Object.assign({ activo: true }, u));
+        return s;
+      },
+      down(s) {
+        ['modulos', 'compartirAliadosRed', 'umbrales', 'clinica'].forEach((k) => delete s.config[k]);
+        s.usuarios = s.usuarios.filter((u) => !u.creadoV14).map((u) => { const c = Object.assign({}, u); delete c.activo; return c; });
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

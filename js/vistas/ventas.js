@@ -20,8 +20,8 @@
   const estadoReceta = (r) => (r.estado === 'vigente' && r.tipo !== 'botiquin' && V().diasVigencia(r, hoy()) < 0 ? 'vencida' : r.estado);
 
   /* =========================================================== VENTAS (listado y recetas) */
-  function ventas() {
-    const tab = ui.vtTab || 'ventas';
+  function ventas(modo) {
+    const tab = modo === 'recetas' ? 'recetas' : 'ventas';
     const vender = Store.puede('ventas', 'editar');
     const ini = new Date(); ini.setHours(0, 0, 0, 0);
     const desde = ui.vtRango === 'todas' ? null : ui.vtRango === '30' ? new Date(ini.getTime() - 29 * 86400000) : ui.vtRango === '7' ? new Date(ini.getTime() - 6 * 86400000) : ini;
@@ -33,8 +33,9 @@
     }).slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
     const rangos = [['hoy', 'Hoy'], ['7', '7 días'], ['30', '30 días'], ['todas', 'Todas']];
     const recetas = (S().recetas || []).slice().sort((a, b) => (b.fechaRegistro || '').localeCompare(a.fechaRegistro || ''));
-    const html = pageHead('cart', 'Ventas', 'Pet shop y farmacia veterinaria. Cada venta descuenta stock y queda asociada al tutor.', vender ? '<button class="btn primary" id="btn-venta">' + icon('plus') + 'Nueva venta</button>' : '') +
-      '<div class="tabs"><button data-tab="ventas" class="' + (tab === 'ventas' ? 'on' : '') + '">Ventas</button><button data-tab="recetas" class="' + (tab === 'recetas' ? 'on' : '') + '">Recetas RVE (' + recetas.length + ')</button></div>' +
+    const html = (tab === 'recetas'
+      ? pageHead('file', 'Recetas (RVE)', 'Recetas veterinarias electrónicas registradas y entregas desde botiquín (Res. SENASA 654/2026).', '', 'violet')
+      : pageHead('cart', 'Ventas', 'Pet shop y farmacia veterinaria. Cada venta descuenta stock y queda asociada al tutor.', vender ? '<button class="btn primary" id="btn-venta">' + icon('plus') + 'Nueva venta</button>' : '')) +
       (tab === 'ventas'
         ? '<div class="grid kpis">' + kpi('cart', '', 'Ventas', r.cantidad, rangos.find((x) => x[0] === (ui.vtRango || 'hoy'))[1].toLowerCase()) + kpi('file', 'violet', 'Facturación', pesos(r.total), 'IVA incluido') + kpi('chart', '', 'Ticket promedio', pesos(r.promedio), '') +
           kpi('globe', 'amber', 'Por medio de pago', Object.keys(r.porMedio).length ? Object.entries(r.porMedio).sort((a, b) => b[1] - a[1]).map(([m, t]) => V().MEDIOS[m] + ' ' + pesos(t)).slice(0, 1)[0] : '—', Object.entries(r.porMedio).sort((a, b) => b[1] - a[1]).slice(1).map(([m, t]) => V().MEDIOS[m] + ' ' + pesos(t)).join(' · ')) + '</div>' +
@@ -222,7 +223,7 @@
   function comprobante(id) {
     const v = (S().ventas || []).find((x) => x.id === id), t = Store.tutor(v.tutorId) || {}, pac = v.pacienteId ? Store.paciente(v.pacienteId) : null;
     const rv = v.recetaId ? (S().recetas || []).find((r) => r.id === v.recetaId) : null;
-    const cuerpo = '<div class="ticket"><div style="text-align:center"><img src="assets/logo-texto.png" alt="ArcionPet" style="height:26px"><div class="small muted">Veterinaria · red EISPLUS</div><div class="strong" style="margin-top:8px">Comprobante de venta ' + nro(v) + '</div><div class="small muted">' + fShort(v.fecha) + ' · no válido como factura</div></div>' +
+    const cuerpo = '<div class="ticket"><div style="text-align:center"><img src="assets/logo-texto.png" alt="ArcionPet" style="height:26px"><div class="small muted">' + esc(Store.clinica.razonSocial || Store.clinica.nombre) + (Store.clinica.cuit ? ' · CUIT ' + esc(Store.clinica.cuit) : '') + '<br>' + esc(Store.clinica.domicilio) + '</div><div class="strong" style="margin-top:8px">Comprobante de venta ' + nro(v) + '</div><div class="small muted">' + fShort(v.fecha) + ' · no válido como factura</div></div>' +
       '<div class="small" style="margin:10px 0">Cliente: ' + esc(t.nombre + ' ' + t.apellido) + ' · ' + esc(t.doc) + (pac ? '<br>Mascota: ' + esc(pac.nombre) : '') + '</div>' +
       v.items.map((i) => '<div class="tk-row"><span>' + i.cantidad + ' × ' + esc(i.nombre) + '</span><span>' + pesos(i.subtotal) + '</span></div>').join('') +
       '<div class="tk-row tk-total"><span>Total</span><span>' + pesos(v.total) + '</span></div><div class="tk-row small muted"><span>IVA contenido (21 %)</span><span>' + pesos(v.ivaContenido) + '</span></div>' +

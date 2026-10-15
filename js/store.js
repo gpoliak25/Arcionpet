@@ -132,7 +132,8 @@
   }
 
   function hemoAlertas() {
-    return S.hemo.filter((u) => (u.estado === 'disponible' || u.estado === 'reservada') && daysBetween(new Date(), u.vence) <= 7 && daysBetween(new Date(), u.vence) >= 0);
+    const dias = ((S.config || {}).umbrales || {}).avisoHemo || 7;
+    return S.hemo.filter((u) => (u.estado === 'disponible' || u.estado === 'reservada') && daysBetween(new Date(), u.vence) <= dias && daysBetween(new Date(), u.vence) >= 0);
   }
 
   /* Alertas de seguridad clínica: estudios contradictorios y demoras respecto del SLA configurado. */
@@ -161,8 +162,8 @@
     });
     if (S.productos) {
       const ia = inventarioAlertas();
-      if (ia.vencidos.length) n.push({ id: 'n-inv-venc', ic: 'alert', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'Dar de baja en Inventario', go: '#/inventario' });
-      ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (['venta_rve', 'autoconsumo'].includes(d.tipo) ? 'en tiempo real' : r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/inventario' }); });
+      if (ia.vencidos.length) n.push({ id: 'n-inv-venc', ic: 'alert', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'Dar de baja en Farmacia', go: '#/farmacia' });
+      ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (['venta_rve', 'autoconsumo'].includes(d.tipo) ? 'en tiempo real' : r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/farmacia' }); });
     }
     hemoAlertas().forEach((u) => {
       const d = daysBetween(new Date(), u.vence);
@@ -189,9 +190,10 @@
   function inventarioAlertas() {
     const cats = catalogosVisibles(), hoy = new Date();
     const prods = S.productos.filter((p) => p.activo !== false && cats.includes(p.catalogo));
-    const v = I().vencimientos(prods, S.lotes, hoy);
+    const dias = ((S.config || {}).umbrales || {}).avisoFarmacia;
+    const v = I().vencimientos(prods, S.lotes, hoy, dias);
     return {
-      bajoMinimo: prods.filter((p) => I().estado(p, S.lotes, hoy).bajoMinimo),
+      bajoMinimo: prods.filter((p) => I().estado(p, S.lotes, hoy, dias).bajoMinimo),
       porVencer: v.porVencer, vencidos: v.vencidos,
       declaraciones: cats.includes('farmacia') ? S.declaraciones.filter((d) => d.estado === 'pendiente') : [],
     };
@@ -281,7 +283,21 @@
     },
     asignar(coleccion, id, usuarioId) { byId(coleccion, id).asignadoA = usuarioId || null; save(); },
     setDemo(on) { S.config.demoMode = !!on; save(); },
-    setConfig(datos) { Object.assign(S.config, datos); save(); },
+    setConfig(datos) {
+      const nueva = Object.assign({}, S.config, datos);
+      const errores = Dominio.configuracion.validar(nueva);
+      if (errores.length) throw new Error(errores[0]);
+      S.config = nueva; save();
+    },
+    guardarUsuario(datos) {
+      const lista = S.usuarios.map((u) => (u.id === datos.id ? Object.assign({}, u, datos) : u));
+      if (!datos.id) lista.push(Object.assign({ activo: true }, datos, { id: uid('u'), iniciales: (datos.nombre || '?').replace(/^(Dra?\.|Lic\.)\s+/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase(), creadoV14: true }));
+      const errores = Dominio.configuracion.validarUsuarios(lista);
+      if (errores.length) throw new Error(errores[0]);
+      S.usuarios = lista;
+      if (!lista.find((u) => u.id === S.usuarioActivo && u.activo !== false)) S.usuarioActivo = lista.find((u) => u.rol === 'administracion' && u.activo !== false).id;
+      save();
+    },
     auditar(accion, detalle) { S.auditoria.push(Object.assign({ id: uid('au'), fecha: new Date().toISOString(), usuario: S.usuarioActivo, accion }, detalle)); save(); },
     generarInforme(eid) {
       const e = estudio(eid);
@@ -341,7 +357,10 @@
   window.Store = {
     get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
     estudiosActivos, contradicciones, demoras, demoraDe, get demo() { return !!(S.config && S.config.demoMode); },
-    veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario'), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
+    moduloHabilitado: (m) => Dominio.configuracion.habilitado(S.config, m),
+    get umbrales() { return Object.assign({}, Dominio.configuracion.DEFECTO.umbrales, (S.config || {}).umbrales); },
+    get clinica() { return Object.assign({}, Dominio.configuracion.DEFECTO.clinica, (S.config || {}).clinica); },
+    veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
     triage, notificaciones, qaStats, hemoAlertas, RES_LABEL, A,

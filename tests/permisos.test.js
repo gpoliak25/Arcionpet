@@ -38,6 +38,19 @@ test('solo administración cambia el modelo de IA', () => {
   ['veterinario', 'recepcion', 'peluqueria'].forEach((r) => assert.equal(P.puedeAccion(r, 'cambiarModelo'), false));
 });
 
+test('Modelo CNN y Configuración: solo administración', () => {
+  ['modelo', 'configuracion'].forEach((m) => {
+    assert.equal(P.puede('administracion', m), true, m);
+    ['veterinario', 'recepcion', 'peluqueria'].forEach((r) => assert.equal(P.puede(r, m), false, r + ' ' + m));
+  });
+});
+
+test('pet shop y farmacia: peluquería ve solo pet shop', () => {
+  assert.equal(P.puede('peluqueria', 'petshop'), true);
+  assert.equal(P.puede('peluqueria', 'farmacia'), false);
+  assert.equal(P.puede('veterinario', 'farmacia', 'editar'), true);
+});
+
 test('todos los roles ven Inicio y ARCION', () => {
   Object.keys(P.ROLES).forEach((r) => { assert.ok(P.puede(r, 'inicio')); assert.ok(P.puede(r, 'arcion')); });
 });

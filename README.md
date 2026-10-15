@@ -54,6 +54,12 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 
 Está **apagado por defecto**. Con el modo apagado no se ven los controles de demostración (portal simulado, respuestas simuladas de especialistas y soporte, imágenes de validación con su etiqueta de referencia, "Reiniciar demo"). Para prenderlo, abrí `http://localhost:5173/?demo=1`; para apagarlo, `?demo=0`. Queda guardado en el navegador.
 
+## Menú y Configuración
+
+El menú se organiza en: Inicio · Clínica (Pacientes, Tutores) · Banco de sangre (Hemocomponentes) · Diagnóstico con IA (Imágenes, Triage, Informes, Derivaciones) · Inventario y ventas (Pet shop, Farmacia, Ventas, Recetas) · Servicios (Turnos) · Peluquería · Aliados · Red y gestión (Interconsultas, ARCION Pet, Control de calidad, Analítica, Modelo CNN) · Configuración.
+
+**Configuración** (solo administración): datos de la clínica, usuarios y roles, umbrales de la IA y de avisos de vencimiento, SLA, módulos habilitados y flags (DEMO_MODE, compartir aliados con la red). Los módulos deshabilitados desaparecen del menú. Modelo CNN también es solo para administración. Todo cambio queda en la auditoría.
+
 ## Seguridad clínica
 
 - La IA informa la **probabilidad de patología** (probabilidad de la clase patológica), no una "confianza" del modelo.

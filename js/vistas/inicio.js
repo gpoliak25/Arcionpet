@@ -25,10 +25,10 @@
     if (P('interconsultas')) s.interconsultas.filter((i) => i.noLeida).forEach((i) => att.push({ ic: 'chat', c: 'violet', t: 'Respuesta de soporte', s: i.asunto, go: '#/interconsultas/' + i.id }));
     if (P('inventario')) {
       const ia = Store.inventarioAlertas();
-      if (ia.vencidos.length) att.push({ ic: 'alert', c: 'red', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'No se pueden vender: dar de baja', go: '#/inventario' });
-      ia.declaraciones.forEach((d) => att.push({ ic: 'clipboard', c: 'violet', t: 'Declarar en SIGTRAZAVET', s: ((Store.producto(d.productoId) || {}).nombre || '') + ' · lote ' + d.lote, go: '#/inventario' }));
+      if (ia.vencidos.length) att.push({ ic: 'alert', c: 'red', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'No se pueden vender: dar de baja', go: '#/farmacia' });
+      ia.declaraciones.forEach((d) => att.push({ ic: 'clipboard', c: 'violet', t: 'Declarar en SIGTRAZAVET', s: ((Store.producto(d.productoId) || {}).nombre || '') + ' · lote ' + d.lote, go: '#/farmacia' }));
       if (ia.bajoMinimo.length) att.push({ ic: 'package', c: '', t: ia.bajoMinimo.length + (ia.bajoMinimo.length === 1 ? ' producto' : ' productos') + ' bajo el stock mínimo', s: ia.bajoMinimo.slice(0, 3).map((p) => p.nombre).join(', ') + (ia.bajoMinimo.length > 3 ? '…' : ''), go: '#/inventario' });
-      if (ia.porVencer.length) att.push({ ic: 'clock', c: '', t: ia.porVencer.length + (ia.porVencer.length === 1 ? ' lote vence' : ' lotes vencen') + ' en 30 días', s: 'Farmacia veterinaria', go: '#/inventario' });
+      if (ia.porVencer.length) att.push({ ic: 'clock', c: '', t: ia.porVencer.length + (ia.porVencer.length === 1 ? ' lote vence' : ' lotes vencen') + ' en 30 días', s: 'Farmacia veterinaria', go: '#/farmacia' });
     }
     if (P('hemocomponentes')) Store.hemoAlertas().forEach((x) => { const d = Store.daysBetween(new Date(), x.vence); att.push({ ic: 'drop', c: 'red', t: x.comp + ' ' + x.id, s: (d === 0 ? 'Vence hoy' : 'Vence en ' + d + ' d') + ' · ' + x.ubicacion, go: '#/hemocomponentes' }); });
 

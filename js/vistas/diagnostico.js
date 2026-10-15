@@ -289,7 +289,7 @@
     const col = { normal: '#059669', incierto: '#D97706', patologico: '#DC2626' }[ia.resultado] || '#64748B';
     const dato = (k, v) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>';
     return '<article class="report-sheet">' +
-      '<header class="rs-head"><div class="rs-brand"><img class="rs-logo" src="assets/logo-icono.png" alt=""><div><img class="rs-wordmark" src="assets/logo-texto.png" alt="ArcionPet"><span>Veterinaria · red EISPLUS</span></div></div>' +
+      '<header class="rs-head"><div class="rs-brand"><img class="rs-logo" src="assets/logo-icono.png" alt=""><div><img class="rs-wordmark" src="assets/logo-texto.png" alt="ArcionPet"><span>' + esc(Store.clinica.nombre) + ' · ' + esc(Store.clinica.domicilio) + (Store.clinica.telefono ? ' · ' + esc(Store.clinica.telefono) : '') + '</span></div></div>' +
       '<div class="rs-title"><h2>Informe radiológico</h2><span>N.º ' + esc(inf.id.toUpperCase()) + ' · ' + fDate(inf.fechaFirma || inf.fecha) + '</span></div></header>' +
       '<dl class="rs-ficha">' +
       dato('Paciente', '<b>' + esc(p.nombre) + '</b>') + dato('Especie / raza', esc(p.especie + ' · ' + p.raza)) + dato('Edad / sexo', esc(Store.edad(p.nacimiento) + ' · ' + p.sexo) + (p.peso ? ' · ' + p.peso + ' kg' : '')) + dato('Tutor', esc((t.nombre || '') + ' ' + (t.apellido || ''))) +
