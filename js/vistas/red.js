@@ -125,7 +125,7 @@
   function analitica() {
     const s = S(), now = new Date();
     const periodo = ui.anPeriodo || '30', r = AN().rango(periodo, now);
-    const TABS = [['diagnostico', 'Diagnóstico', 'imagenes'], ['turnos', 'Turnos', 'turnos'], ['ventas', 'Ventas', 'ventas'], ['hemo', 'Hemocomponentes', 'hemocomponentes'], ['aliados', 'Aliados', 'aliados']].filter((t) => Store.puede(t[2]) && (t[0] !== 'aliados' || Store.moduloHabilitado('aliados')));
+    const TABS = [['diagnostico', 'Diagnóstico', 'imagenes'], ['turnos', 'Turnos', 'turnos'], ['ventas', 'Ventas', 'ventas'], ['hemo', 'Hemocomponentes', 'hemocomponentes'], ['aliados', 'Aliados', 'aliados'], ['recordatorios', 'Recordatorios', 'turnos']].filter((t) => Store.puede(t[2]) && (t[0] !== 'aliados' || Store.moduloHabilitado('aliados')));
     const tab = TABS.some((t) => t[0] === ui.anTab) ? ui.anTab : TABS[0][0];
     let cuerpo = '';
     if (tab === 'diagnostico') {
@@ -165,6 +165,12 @@
       cuerpo = '<div class="grid kpis">' + kpi('drop', 'red', 'Transfusiones', h.transfusiones, AN().PERIODOS[periodo].toLowerCase()) + kpi('clock', 'amber', 'Unidades vencidas', h.vencidas, 'sin uso en el período') + kpi('chart', '', 'Descarte', h.descarte + '%', 'vencidas sobre usadas + vencidas') + kpi('drop', '', 'Disponibles hoy', h.porEstado.disponible || 0, 'en la red') + '</div>' +
         '<div class="grid halves"><div class="card"><div class="card-head"><h3>Unidades por estado (hoy)</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(h.porEstado).map(([k, n]) => [EST[k] || k, n]), s.hemo.length) + '</div></div>' +
         '<div class="card"><div class="card-head"><h3>Disponibles por componente</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(h.disponiblesPorComp).sort((a, b) => b[1] - a[1])) + '</div></div></div>';
+    }
+    if (tab === 'recordatorios') {
+      const sg = Dominio.recordatorios.seguimiento(s.recordatorios || [], s.turnos, s.pelTurnos, r);
+      const E = Dominio.recordatorios.ESTADOS;
+      cuerpo = '<div class="grid kpis">' + kpi('send', '', 'Avisos generados', sg.total, AN().PERIODOS[periodo].toLowerCase()) + kpi('check', '', 'Entregados', sg.porEstado.entregado || 0, (sg.porEstado.enviado || 0) + ' enviados sin confirmación') + kpi('alert', 'red', 'Fallidos', sg.porEstado.fallo || 0, '') + kpi('calendar', 'violet', 'Turnos concretados', sg.tasa + '%', 'después de un aviso de salud') + '</div>' +
+        '<div class="card"><div class="card-head"><h3>Estado de los avisos</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(sg.porEstado).map(([k, n]) => [E[k] || k, n]), sg.total) + '</div></div>';
     }
     if (tab === 'aliados') {
       const sg = Dominio.aliados.seguimiento(s.aliadoRecomendaciones || [], s.aliados || [], r);

@@ -114,12 +114,14 @@
         (P('turnos') ? '<div class="section-title">Turnos (' + tur.length + ')</div>' : '') +
         (!P('turnos') ? '' : tur.length ? tur.map((x) => '<div class="small" style="padding:4px 0">' + fShort(x.fecha) + ' · ' + esc(x.tipo) + ' · ' + turnoEstadoBadge(x) + '</div>').join('') : '<p class="muted">Sin turnos.</p>') +
         (P('hemocomponentes') && hemo.length ? '<div class="section-title">Unidades reservadas</div>' + hemo.map((u) => '<div class="small">' + esc(u.id) + ' · ' + esc(u.comp) + ' · ' + esc(u.grupo) + ' · ' + hemoEstadoBadge(u) + ' · vence ' + fDate(u.vence) + '</div>').join('') : '') +
+        (P('turnos') || P('farmacia') ? Views.calendarioSaludHtml(id) : '') +
         (P('aliados') && Store.moduloHabilitado('aliados') ? '<div class="section-title">Aliados recomendados</div>' + (((S().aliadoRecomendaciones || []).filter((r) => r.pacienteId === id).map((r) => { const a = Store.aliado(r.aliadoId) || {}; return '<div class="small" style="padding:3px 0">' + fDate(r.fecha) + ' · ' + esc(a.nombre || '') + ' · ' + (r.valoracion ? 'valorado ' + r.valoracion.puntaje + '/5' : r.concretada ? 'lo usó' : 'enviada') + '</div>'; }).join('')) || '<p class="small muted">Sin recomendaciones.</p>') : '') +
         (P('hemocomponentes') && tx.length ? '<div class="section-title">Transfusiones (' + tx.length + ')</div>' + tx.map((x) => '<div class="small" style="padding:3px 0">' + fDate(x.fecha) + ' · ' + esc(x.comp + ' ' + x.grupoUnidad) + ' · ' + x.volumen + ' ml · ' + esc(Dominio.hemo.REACCIONES[x.reaccion] || '') + (x.veterinario ? ' · ' + esc(x.veterinario) : '') + '</div>').join('') : ''),
       foot: (Store.puede('aliados', 'editar') && Store.moduloHabilitado('aliados') ? '<button class="btn" id="pd-aliado">' + icon('users') + 'Recomendar aliado</button>' : '') + (P('turnos') ? '<button class="btn" id="pd-turno">' + icon('calendar') + 'Nuevo turno</button>' : '') + (Store.puede('imagenes', 'editar') ? '<button class="btn primary" id="pd-est">' + icon('scan') + 'Nuevo estudio</button>' : '') + (P('turnos') || Store.puede('imagenes', 'editar') ? '' : '<button class="btn" data-close>Cerrar</button>'),
       onMount(m) {
         m.querySelectorAll('[data-est]').forEach((r) => r.onclick = () => { closeModal(); go('#/estudios/' + r.dataset.est); });
         const bt = m.querySelector('#pd-turno'); if (bt) bt.onclick = () => Views.turnoForm(id);
+        Views.bindCalendarioSalud(m, id, () => { closeModal(); setTimeout(() => pacienteDetalle(id), 30); });
         const ba = m.querySelector('#pd-aliado'); if (ba) ba.onclick = () => { closeModal(); setTimeout(() => Views.recomendarAliado(id), 30); };
         const be = m.querySelector('#pd-est'); if (be) be.onclick = () => Views.estudioForm(id);
       },
@@ -142,6 +144,10 @@
     if (d <= 7) return fDate(u.vence) + ' <span class="badge b-patologico">' + (d === 0 ? 'hoy' : d + ' d') + '</span>';
     return fDate(u.vence) + ' <span class="sp">(' + d + ' d)</span>';
   }
+  /* =========================================================== TUTORES */
+  const TD = () => Dominio.tutores;
+  const docTexto = (t) => (TD().TIPOS_DOC[t.tipoDoc || 'DNI'] || 'DNI') + ' ' + (t.doc || '—');
+  const pesos = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
   function tutores() {
     const verBajas = ui.tutBajas === true;
     const editar = Store.puede('tutores', 'editar');
@@ -229,7 +235,7 @@
       '<div class="card"><div class="card-head"><h3>Contacto</h3></div><div class="card-pad" style="padding-top:6px"><dl class="dl">' +
       dato('Teléfono', t.tel ? '<a href="tel:' + esc(t.tel.replace(/\s/g, '')) + '">' + esc(t.tel) + '</a>' : '') +
       dato('Email', t.email ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '') +
-      dato('Domicilio', esc(t.domicilio)) + dato('Documento', esc(docTexto(t))) + dato('CUIT', esc(t.cuit)) + dato('Condición IVA', esc(t.condicionIva || 'Consumidor final')) + dato('Notas', esc(t.notas)) +
+      dato('Domicilio', esc(t.domicilio)) + dato('Documento', esc(docTexto(t))) + dato('CUIT', esc(t.cuit)) + dato('Condición IVA', esc(t.condicionIva || 'Consumidor final')) + dato('Recordatorios', Views.estadoConsentimiento(t) + (Store.puede('tutores', 'editar') ? ' <button class="btn sm ghost" id="td-rec">Cambiar</button>' : '')) + dato('Notas', esc(t.notas)) +
       '</dl></div></div>' +
       '<div class="card"><div class="card-head"><h3>Mascotas a cargo</h3></div>' +
       (mascotas.length ? mascotas.map((p) => '<div class="list-row clickable" data-pac="' + p.id + '"><div class="att-ic green">' + icon('paw') + '</div><div class="grow"><div class="t">' + esc(p.nombre) + ' <span class="sp">(' + esc(p.especie) + ' · ' + esc(p.raza) + ')</span></div><div class="s">' + Store.edad(p.nacimiento) + (p.peso ? ' · ' + p.peso + ' kg' : '') + '</div></div>' + icon('arrow') + '</div>').join('')
@@ -250,6 +256,7 @@
         b('#tb-baja', () => confirmModal('Dar de baja al tutor', 'El tutor deja de aparecer para nuevas altas, pero se conservan sus datos, sus mascotas, sus turnos y sus compras. Podés reactivarlo cuando quieras.', 'Dar de baja', () => { A.bajaTutor(id); toast('Tutor dado de baja'); }));
         b('#tb-alta', () => { A.reactivarTutor(id); toast('Tutor reactivado'); });
         b('#tb-mascota', () => pacienteForm(null, { tutorId: id }));
+        b('#td-rec', () => Views.consentimientoForm(id));
       },
     };
   }
