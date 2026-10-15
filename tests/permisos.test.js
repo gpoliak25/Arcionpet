@@ -33,6 +33,11 @@ test('ajustes de stock: administración en todo, veterinario solo en farmacia', 
   assert.equal(P.puedeAjustarStock('recepcion', 'farmacia'), false);
 });
 
+test('solo administración cambia el modelo de IA', () => {
+  assert.equal(P.puedeAccion('administracion', 'cambiarModelo'), true);
+  ['veterinario', 'recepcion', 'peluqueria'].forEach((r) => assert.equal(P.puedeAccion(r, 'cambiarModelo'), false));
+});
+
 test('todos los roles ven Inicio y ARCION', () => {
   Object.keys(P.ROLES).forEach((r) => { assert.ok(P.puede(r, 'inicio')); assert.ok(P.puede(r, 'arcion')); });
 });

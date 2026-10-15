@@ -5,15 +5,18 @@
 
   /* =========================================================== PACIENTES */
   function pacientes() {
-    const list = S().pacientes.filter((p) => { const t = Store.tutor(p.tutorId) || {}; return match(ui.qPac, p.nombre, p.raza, p.especie, t.nombre, t.apellido, t.doc); });
+    const verBajas = ui.pacBajas === true;
+    const bajas = S().pacientes.filter((p) => p.activo === false).length;
+    const list = S().pacientes.filter((p) => (verBajas ? p.activo === false : p.activo !== false)).filter((p) => { const t = Store.tutor(p.tutorId) || {}; return match(ui.qPac, p.nombre, p.raza, p.especie, t.nombre, t.apellido, t.doc); });
     const rows = list.map((p) => {
       const t = Store.tutor(p.tutorId);
       return '<tr class="clickable" data-ver="' + p.id + '"><td class="strong">' + esc(p.nombre) + (p.origen === 'red' ? ' <span class="badge b-violet" title="Incorporado desde la red EISPLUS">red</span>' : '') + '</td><td><span class="chip">' + esc(p.especie) + '</span></td><td>' + esc(p.raza) + '</td><td>' + Store.edad(p.nacimiento) + '</td><td>' + tutorName(t) + '</td>' +
-        '<td class="actions"><button class="icon-btn" data-edit="' + p.id + '" title="Editar">' + icon('edit') + '</button><button class="icon-btn danger" data-del="' + p.id + '" title="Eliminar">' + icon('trash') + '</button></td></tr>';
+        '<td class="actions">' + (Store.puede('pacientes', 'editar') ? (p.activo === false ? '<button class="btn sm" data-alta="' + p.id + '">Reactivar</button>' : '<button class="icon-btn" data-edit="' + p.id + '" title="Editar">' + icon('edit') + '</button><button class="icon-btn danger" data-del="' + p.id + '" title="Dar de baja">' + icon('trash') + '</button>') : '') + '</td></tr>';
     }).join('');
     const html = pageHead('paw', 'Pacientes', 'Mascotas de la clínica y las incorporadas desde la red EISPLUS.',
       '<button class="btn" id="btn-red">' + icon('network') + 'Buscar en la red</button><button class="btn" id="btn-tutores">' + icon('users') + 'Tutores</button><button class="btn primary" id="btn-nuevo">' + icon('plus') + 'Nuevo paciente</button>') +
-      '<div class="toolbar">' + searchBox('q-pac', 'Buscar por mascota, raza, tutor o documento…', ui.qPac) + '</div>' +
+      '<div class="toolbar">' + searchBox('q-pac', 'Buscar por mascota, raza, tutor o documento…', ui.qPac) +
+      '<div class="seg"><button data-pbajas="0" class="' + (verBajas ? '' : 'on') + '">Activos</button><button data-pbajas="1" class="' + (verBajas ? 'on' : '') + '">Dados de baja (' + bajas + ')</button></div></div>' +
       '<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Especie</th><th>Raza</th><th>Edad</th><th>Tutor</th><th class="actions">Acciones</th></tr></thead><tbody>' +
       (rows || '<tr><td colspan="6">' + empty('search', 'Sin resultados', '') + '</td></tr>') + '</tbody></table></div>';
     return {
@@ -24,9 +27,16 @@
         root.querySelector('#btn-tutores').onclick = () => go('#/tutores');
         on(root, '[data-ver]', 'click', (el) => pacienteDetalle(el.dataset.ver));
         on(root, '[data-edit]', 'click', (el, e) => { e.stopPropagation(); pacienteForm(el.dataset.edit); });
+        on(root, '[data-pbajas]', 'click', (el) => { ui.pacBajas = el.dataset.pbajas === '1'; App.render(); });
+        on(root, '[data-alta]', 'click', (el, e) => { e.stopPropagation(); A.reactivarPaciente(el.dataset.alta); toast('Paciente reactivado'); });
         on(root, '[data-del]', 'click', (el, e) => {
           e.stopPropagation(); const p = Store.paciente(el.dataset.del);
-          confirmModal('Eliminar paciente', '¿Eliminar a <b>' + esc(p.nombre) + '</b> junto con sus estudios, informes y turnos? Esta acción no se puede deshacer.', 'Eliminar', () => { A.deletePaciente(p.id); toast('Paciente eliminado'); });
+          openModal({
+            title: 'Dar de baja a ' + esc(p.nombre),
+            body: '<p class="muted" style="margin-top:0">El paciente no se borra: se conservan sus estudios, informes, turnos y compras, y se puede reactivar. Deja de aparecer en los listados y en las altas.</p><div class="field"><label>Motivo *</label><select name="motivo"><option value="">— Elegí —</option><option>Fallecimiento</option><option>Cambio de clínica</option><option>Duplicado</option><option>Otro</option></select></div>',
+            foot: '<button class="btn" data-close>Cancelar</button><button class="btn danger" id="bp-ok">Dar de baja</button>',
+            onMount(m) { m.querySelector('#bp-ok').onclick = () => { const f = formData(m); if (!f.motivo) return toast('Indicá el motivo', 'warn'); A.bajaPaciente(p.id, f.motivo); closeModal(); toast(esc(p.nombre) + ' dado de baja'); }; },
+          });
         });
       },
     };

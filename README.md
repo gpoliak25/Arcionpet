@@ -50,6 +50,19 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 - ARCION responde con datos reales de la demo, usando reconocimiento de intenciones local.
 - Las fechas de los datos de ejemplo se calculan a partir del día de hoy, así la demo siempre se ve vigente.
 
+## Modo demo (DEMO_MODE)
+
+Está **apagado por defecto**. Con el modo apagado no se ven los controles de demostración (portal simulado, respuestas simuladas de especialistas y soporte, imágenes de validación con su etiqueta de referencia, "Reiniciar demo"). Para prenderlo, abrí `http://localhost:5173/?demo=1`; para apagarlo, `?demo=0`. Queda guardado en el navegador.
+
+## Seguridad clínica
+
+- La IA informa la **probabilidad de patología** (probabilidad de la clase patológica), no una "confianza" del modelo.
+- Cada estudio guarda la **versión del modelo** con que se analizó. Cambiar el modelo activo no reanaliza estudios anteriores; solo administración puede hacerlo y queda en la **auditoría** (pantalla Modelo CNN).
+- Al firmar un informe se **congelan** el resultado y la versión del modelo: no cambian aunque cambie el modelo activo, y el estudio ya no se puede volver a analizar.
+- Alertas por **estudios contradictorios** (mismo paciente y día, uno Normal y otro Patológico) y por **demoras** respecto del SLA (Triage 24 h, Derivaciones 72 h, Interconsultas 48 h), con campo **Asignado a**.
+- **Bajas lógicas**: pacientes, estudios y borradores no se borran; un estudio con informe firmado o derivación no se puede dar de baja.
+- Alcance del modelo: **solo tórax de perro o gato**; se advierte al cargar un estudio de otra especie.
+
 ## Roles (demo)
 
 Tocá el usuario abajo a la izquierda para cambiar de rol: **Veterinario/a**, **Recepción**, **Peluquería** o **Administración**. El menú, las rutas, el Inicio, las notificaciones y ARCION se adaptan a los permisos de cada rol (matriz en `js/dominio/permisos.js`). La firma de informes es exclusiva del veterinario. Son permisos de interfaz: sin backend no hay seguridad real.

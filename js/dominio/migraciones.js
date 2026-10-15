@@ -65,6 +65,9 @@
     return { productos, lotes, movimientos };
   }
 
+  /* Versión de cada modelo de IA (se guarda en cada estudio analizado). */
+  const VERSIONES_MODELO = { ensamble: 'ensamble-tta@1.0', transfer_mobilenetv2: 'mobilenetv2-finetune@1.0', transfer_fase1: 'mobilenetv2-fase1@1.0', cnn_desde_cero: 'cnn-cero@1.0' };
+
   const PASOS = [
     {
       de: 8, a: 9, descripcion: 'Usuarios de la demo y rol activo (selector de roles)',
@@ -119,6 +122,72 @@
         return s;
       },
     },
+    {
+      de: 12, a: 13, descripcion: 'Seguridad clínica: probabilidad de patología, versión de modelo, bajas lógicas, asignación, SLA, DEMO_MODE, auditoría y datos ficticios',
+      up(s) {
+        const deshacer = { dni: {}, email: {} }; // lo necesario para revertir exactamente
+        s.estudios = s.estudios.map((e) => {
+          const c = Object.assign({}, e, { probPatologia: e.confianza == null ? null : e.confianza, activo: true, asignadoA: null });
+          delete c.confianza;
+          if (c.modelo && !c.modelo.version) c.modelo = Object.assign({}, c.modelo, { version: VERSIONES_MODELO[c.modelo.clave] || c.modelo.clave + '@1.0' });
+          return c;
+        });
+        s.informes = s.informes.map((i) => {
+          if (i.estado !== 'firmado' || i.iaFirmada) return i;
+          const e = s.estudios.find((x) => x.id === i.estudioId) || {};
+          return Object.assign({}, i, { iaFirmada: { resultado: e.resultado, probPatologia: e.probPatologia, probs: e.probs || null, modelo: e.modelo || null, analizadoEn: e.analizadoEn || null, congeladoEn: i.fechaFirma } });
+        });
+        s.pacientes = s.pacientes.map((p) => Object.assign({ activo: true }, p));
+        s.derivaciones = s.derivaciones.map((d) => Object.assign({ asignadoA: d.id === 'd1' ? 'u-vet' : null }, d));
+        s.interconsultas = s.interconsultas.map((i) => Object.assign({ asignadoA: null }, i));
+        s.usuarios = s.usuarios.concat([{ id: 'u-vet2', nombre: 'Dr. Tomás Ferreyra', iniciales: 'TF', rol: 'veterinario', matricula: 'MP 5170' }]);
+        s.config = { demoMode: false, sla: { triage: 24, derivaciones: 72, interconsultas: 48 }, modeloDatos: { origen: 'Radiografías aportadas por una veterinaria colaboradora', fecha: '', alcance: 'Tórax de perro y gato (proyecciones laterolaterales y ventrodorsales)', imagenes: '441 (308 de entrenamiento, 66 de validación y 67 de prueba)', autorizacion: '' } };
+        s.auditoria = [];
+        // datos de ejemplo ficticios: DNI en un rango que no se asigna y emails en el dominio reservado example.com
+        const nuevoDni = (doc) => {
+          if (!deshacer.dni[doc]) { const n = Object.keys(deshacer.dni).length + 1; deshacer.dni[doc] = '99.100.' + String(n).padStart(3, '0'); }
+          return deshacer.dni[doc];
+        };
+        const SEMILLA = ['30.456.789', '28.111.222', '25.987.654', '33.222.111', '35.789.012', '22.345.678'];
+        SEMILLA.forEach(nuevoDni);
+        s.tutores = s.tutores.map((t) => {
+          const c = Object.assign({}, t);
+          if (deshacer.dni[c.doc]) c.doc = deshacer.dni[c.doc];
+          if (/@mail\.com$/.test(c.email || '')) { deshacer.email[c.id] = c.email; c.email = c.email.replace(/@mail\.com$/, '@example.com'); }
+          return c;
+        });
+        s.redPacientes = s.redPacientes.map((r) => (deshacer.dni[r.tutor.doc] ? Object.assign({}, r, { tutor: Object.assign({}, r.tutor, { doc: deshacer.dni[r.tutor.doc] }) }) : r));
+        s.recetas = (s.recetas || []).map((r) => (deshacer.dni[r.titular.doc] ? Object.assign({}, r, { titular: Object.assign({}, r.titular, { doc: deshacer.dni[r.titular.doc] }) }) : r));
+        s._deshacerV13 = deshacer;
+        return s;
+      },
+      down(s) {
+        const deshacer = s._deshacerV13 || { dni: {}, email: {} };
+        const viejoDni = {}; Object.entries(deshacer.dni).forEach(([viejo, nuevo]) => { viejoDni[nuevo] = viejo; });
+        s.estudios = s.estudios.map((e) => {
+          const c = Object.assign({}, e, { confianza: e.probPatologia });
+          ['probPatologia', 'activo', 'asignadoA', 'fechaBaja', 'motivoBaja', 'usuarioBaja', 'fueraDeAlcance'].forEach((k) => delete c[k]);
+          if (c.modelo) { c.modelo = Object.assign({}, c.modelo); delete c.modelo.version; }
+          return c;
+        });
+        s.informes = s.informes.map((i) => { const c = Object.assign({}, i); delete c.iaFirmada; if (c.estado === 'descartado') c.estado = 'borrador'; return c; });
+        s.pacientes = s.pacientes.map((p) => { const c = Object.assign({}, p); ['activo', 'fechaBaja', 'motivoBaja'].forEach((k) => delete c[k]); return c; });
+        s.derivaciones = s.derivaciones.map((d) => { const c = Object.assign({}, d); delete c.asignadoA; return c; });
+        s.interconsultas = s.interconsultas.map((i) => { const c = Object.assign({}, i); delete c.asignadoA; return c; });
+        s.usuarios = s.usuarios.filter((u) => u.id !== 'u-vet2');
+        if (s.usuarioActivo === 'u-vet2') s.usuarioActivo = 'u-vet';
+        s.tutores = s.tutores.map((t) => {
+          const c = Object.assign({}, t);
+          if (viejoDni[c.doc]) c.doc = viejoDni[c.doc];
+          if (deshacer.email[c.id]) c.email = deshacer.email[c.id];
+          return c;
+        });
+        s.redPacientes = s.redPacientes.map((r) => (viejoDni[r.tutor.doc] ? Object.assign({}, r, { tutor: Object.assign({}, r.tutor, { doc: viejoDni[r.tutor.doc] }) }) : r));
+        s.recetas = (s.recetas || []).map((r) => (viejoDni[r.titular.doc] ? Object.assign({}, r, { titular: Object.assign({}, r.titular, { doc: viejoDni[r.titular.doc] }) }) : r));
+        delete s.config; delete s.auditoria; delete s._deshacerV13;
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;
@@ -152,5 +221,5 @@
     return s;
   }
 
-  return { migrar, revertir, PASOS, VERSION_BASE, VERSION_ACTUAL, USUARIOS_DEMO };
+  return { migrar, revertir, PASOS, VERSION_BASE, VERSION_ACTUAL, USUARIOS_DEMO, VERSIONES_MODELO };
 });

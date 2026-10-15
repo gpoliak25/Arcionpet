@@ -16,6 +16,9 @@
     const propios = s.pacientes.filter((p) => p.origen === 'clinica').length;
 
     const att = [];
+    if (P('imagenes')) Store.contradicciones().forEach((c) => { const p = Store.paciente(c.pacienteId) || {}; att.push({ ic: 'alert', c: 'red', t: 'Estudios contradictorios: ' + p.nombre, s: 'Mismo día, uno Normal y otro Patológico', go: '#/estudios/' + c.estudios[0] }); });
+    const MOD_SLA = { triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas' }, TXT_SLA = { triage: 'Urgente sin informe firmado', derivaciones: 'Derivación sin respuesta', interconsultas: 'Interconsulta sin respuesta' };
+    Store.demoras().filter((d) => P(MOD_SLA[d.tipo])).forEach((d) => att.push({ ic: 'clock', c: 'red', t: TXT_SLA[d.tipo] + ' · ' + Math.round(d.horas) + ' h', s: 'SLA ' + d.limite + ' h · ' + (d.asignadoA ? Store.nombreUsuario(d.asignadoA) : 'sin asignar'), go: d.tipo === 'triage' ? '#/estudios/' + d.id : d.tipo === 'interconsultas' ? '#/interconsultas/' + d.id : '#/derivaciones' }));
     if (P('informes')) borradores.forEach((i) => { const e = Store.estudio(i.estudioId), p = Store.paciente(e.pacienteId); att.push({ ic: 'file', c: '', t: 'Informe de ' + p.nombre, s: Store.puedeAccion('firmarInforme') ? 'Borrador para revisar y firmar' : 'Pendiente de firma del veterinario', go: '#/informes/' + i.id }); });
     if (P('turnos')) pendPortal.forEach((t) => { const p = Store.paciente(t.pacienteId); att.push({ ic: 'globe', c: 'green', t: 'Pedido de turno: ' + p.nombre, s: t.tipo + ' · ' + fShort(t.fecha) + ' · Portal Cliente', go: '#/turnos' }); });
     if (P('derivaciones')) s.derivaciones.filter((d) => d.estado === 'respondida' && !d.vista).forEach((d) => { const p = Store.paciente(Store.estudio(d.estudioId).pacienteId); att.push({ ic: 'stetho', c: 'green', t: 'Derivación respondida: ' + p.nombre, s: d.a, go: '#/derivaciones' }); });
@@ -29,14 +32,14 @@
     }
     if (P('hemocomponentes')) Store.hemoAlertas().forEach((x) => { const d = Store.daysBetween(new Date(), x.vence); att.push({ ic: 'drop', c: 'red', t: x.comp + ' ' + x.id, s: (d === 0 ? 'Vence hoy' : 'Vence en ' + d + ' d') + ' · ' + x.ubicacion, go: '#/hemocomponentes' }); });
 
-    const recientes = s.estudios.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
+    const recientes = Store.estudiosActivos().slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
     const pk = s.pack;
 
     const html =
       '<div class="greeting"><small>' + fLong(now) + '</small><h1>' + saludo + ', ' + esc(nombre) + ' 👋</h1>' +
       '<p>' + (att.length ? 'Tenés ' + att.length + (att.length === 1 ? ' cosa que necesita' : ' cosas que necesitan') + ' tu atención.' : 'Todo al día. ¡Buen trabajo!') + '</p></div>' +
       '<div class="grid kpis">' +
-      (P('pacientes') ? kpi('paw', '', 'Pacientes', s.pacientes.length, 'propios y de la red', '#/pacientes') : '') +
+      (P('pacientes') ? kpi('paw', '', 'Pacientes', s.pacientes.filter((p) => p.activo !== false).length, 'propios y de la red', '#/pacientes') : '') +
       (P('turnos') ? kpi('calendar', '', 'Turnos de hoy', hoy.length, pendPortal.length ? pendPortal.length + ' pedido' + (pendPortal.length > 1 ? 's' : '') + ' del portal' : 'sin pedidos pendientes', '#/turnos') : '') +
       (P('informes') ? kpi('file', 'amber', Store.puedeAccion('firmarInforme') ? 'Informes para firmar' : 'Informes en borrador', borradores.length, '', '#/informes') : '') +
       (P('ventas') && Store.rol() !== 'veterinario' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); const r = Dominio.ventas.resumen(s.ventas, d.toISOString()); return kpi('cart', 'violet', 'Ventas de hoy', '$ ' + Math.round(r.total).toLocaleString('es-AR'), r.cantidad + (r.cantidad === 1 ? ' venta' : ' ventas'), '#/ventas'); })() : '') +

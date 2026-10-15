@@ -21,7 +21,7 @@
     el.addEventListener('input', () => { ui[key] = el.value; rerender(); });
   }
   function on(root, sel, ev, fn) { root.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, (e) => fn(el, e))); }
-  const pacienteOptions = (sel, filtro) => S().pacientes.filter(filtro || (() => true))
+  const pacienteOptions = (sel, filtro) => S().pacientes.filter((p) => p.activo !== false || p.id === sel).filter(filtro || (() => true))
     .map((p) => '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(p.nombre) + ' (' + esc(p.especie) + ') — ' + tutorName(Store.tutor(p.tutorId)) + '</option>').join('');
   function kpi(ic, color, label, value, sub, href) {
     return '<div class="card kpi' + (href ? ' clickable" data-go="' + href : '') + '"><div class="ki ' + color + '">' + icon(ic) + '</div><div><div class="kl">' + label + '</div><div class="kv">' + value + '</div>' + (sub ? '<div class="ks">' + sub + '</div>' : '') + '</div></div>';
@@ -33,6 +33,25 @@
     return '<span class="badge ' + m[1] + '">' + m[0] + '</span>';
   }
 
-  window.VC = { S, A, go, pageHead, searchBox, empty, pacLabel, tutorName, match, bindSearch, on, pacienteOptions, kpi, turnoEstadoBadge, ui };
+  /* "Asignado a": responsable del seguimiento (veterinarios de la clínica). */
+  function asignadoSelect(coleccion, id, valor) {
+    const editable = Store.puede(coleccion === 'estudios' ? 'triage' : coleccion, 'editar');
+    if (!editable) return valor ? esc(Store.nombreUsuario(valor)) : '<span class="muted">Sin asignar</span>';
+    return '<select class="asig" data-asig="' + coleccion + '" data-id="' + id + '" aria-label="Asignado a"><option value="">Sin asignar</option>' +
+      Store.veterinarios().map((u) => '<option value="' + u.id + '"' + (u.id === valor ? ' selected' : '') + '>' + esc(u.nombre) + '</option>').join('') + '</select>';
+  }
+  function bindAsignados(root) {
+    root.querySelectorAll('[data-asig]').forEach((s) => {
+      s.addEventListener('click', (e) => e.stopPropagation());
+      s.addEventListener('change', () => { Store.A.asignar(s.dataset.asig, s.dataset.id, s.value); UI.toast(s.value ? 'Asignado a ' + Store.nombreUsuario(s.value) : 'Sin asignar'); });
+    });
+  }
+  /* Etiqueta de demora respecto del SLA configurado. */
+  function demoraBadge(tipo, id) {
+    const d = Store.demoraDe(tipo, id);
+    return d ? ' <span class="badge b-solid-red" title="Supera el SLA de ' + d.limite + ' h">' + icon('clock') + ' Demorado ' + Math.round(d.horas) + ' h</span>' : '';
+  }
+
+  window.VC = { asignadoSelect, bindAsignados, demoraBadge, S, A, go, pageHead, searchBox, empty, pacLabel, tutorName, match, bindSearch, on, pacienteOptions, kpi, turnoEstadoBadge, ui };
   window.Views = Object.assign(window.Views || {}, { ui });
 })();
