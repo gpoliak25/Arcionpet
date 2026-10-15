@@ -26,6 +26,13 @@ test('solo administración anula ventas y edita precios', () => {
   assert.equal(P.puedeAccion('veterinario', 'editarPrecios'), false);
 });
 
+test('ajustes de stock: administración en todo, veterinario solo en farmacia', () => {
+  assert.equal(P.puedeAjustarStock('administracion', 'petshop'), true);
+  assert.equal(P.puedeAjustarStock('veterinario', 'farmacia'), true);
+  assert.equal(P.puedeAjustarStock('veterinario', 'petshop'), false);
+  assert.equal(P.puedeAjustarStock('recepcion', 'farmacia'), false);
+});
+
 test('todos los roles ven Inicio y ARCION', () => {
   Object.keys(P.ROLES).forEach((r) => { assert.ok(P.puede(r, 'inicio')); assert.ok(P.puede(r, 'arcion')); });
 });

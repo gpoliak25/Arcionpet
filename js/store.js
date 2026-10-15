@@ -145,6 +145,11 @@
     S.interconsultas.filter((i) => i.noLeida).forEach((i) => {
       n.push({ id: 'n-' + i.id, ic: 'chat', t: 'Nueva respuesta en interconsulta', s: i.asunto, go: '#/interconsultas/' + i.id });
     });
+    if (S.productos) {
+      const ia = inventarioAlertas();
+      if (ia.vencidos.length) n.push({ id: 'n-inv-venc', ic: 'alert', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'Dar de baja en Inventario', go: '#/inventario' });
+      ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/inventario' }); });
+    }
     hemoAlertas().forEach((u) => {
       const d = daysBetween(new Date(), u.vence);
       n.push({ id: 'n-' + u.id, ic: 'drop', t: 'Hemocomponente por vencer', s: u.id + ' · ' + u.comp + ' · ' + (d === 0 ? 'vence hoy' : 'vence en ' + d + ' d'), go: '#/hemocomponentes' });
@@ -158,6 +163,26 @@
     return { total: ev.length, coinciden: coinc, discrepancias: ev.length - coinc, pct: ev.length ? Math.round(coinc / ev.length * 100) : 0 };
   }
 
+  /* ---------- Inventario ---------- */
+  const I = () => Dominio.inventario;
+  const inv = () => ({ productos: S.productos, lotes: S.lotes, movimientos: S.movimientos, declaraciones: S.declaraciones });
+  const ctxInv = (extra) => Object.assign({ fecha: new Date().toISOString(), usuario: S.usuarioActivo, id: uid }, extra);
+  function aplicarInv(r) { ['productos', 'lotes', 'movimientos', 'declaraciones'].forEach((k) => { S[k] = r.inv[k]; }); save(); return r; }
+  const producto = (id) => byId('productos', id);
+  /* Catálogos que puede ver el rol activo (peluquería solo ve pet shop). */
+  const catalogosVisibles = () => (rol() === 'peluqueria' ? ['petshop'] : ['petshop', 'farmacia']);
+  /* Alertas de inventario de los catálogos visibles. */
+  function inventarioAlertas() {
+    const cats = catalogosVisibles(), hoy = new Date();
+    const prods = S.productos.filter((p) => p.activo !== false && cats.includes(p.catalogo));
+    const v = I().vencimientos(prods, S.lotes, hoy);
+    return {
+      bajoMinimo: prods.filter((p) => I().estado(p, S.lotes, hoy).bajoMinimo),
+      porVencer: v.porVencer, vencidos: v.vencidos,
+      declaraciones: cats.includes('farmacia') ? S.declaraciones.filter((d) => d.estado === 'pendiente') : [],
+    };
+  }
+
   /* ---------- Mutaciones ---------- */
   const A = {
     reset() { S = M.migrar(clone(SEED)); soloLectura = false; save(); },
@@ -165,6 +190,18 @@
     revertirA(version) { const backup = JSON.stringify(S); lsSet(KEY + ':backup:v' + S.version, backup); S = M.revertir(S, version); soloLectura = true; lsSet(KEY, JSON.stringify(S)); return S.version; },
     /* Restaura una copia guardada antes de una migración. */
     restaurarBackup(clave) { const raw = lsGet(KEY + ':backup:' + clave); if (!raw) return false; lsSet(KEY, raw); return true; },
+    /* Inventario: si una regla no se cumple, la lógica de dominio lanza ErrorStock y no se modifica nada. */
+    ingresarStock(datos) { return aplicarInv(I().ingresar(inv(), datos, ctxInv())).lote; },
+    ajustarStock(datos) { return aplicarInv(I().ajustar(inv(), datos, ctxInv())).declaracion; },
+    bajaLoteVencido(loteId) { return aplicarInv(I().bajaVencido(inv(), loteId, ctxInv())).declaracion; },
+    marcarDeclarada(id, nroOperacion) { Object.assign(byId('declaraciones', id), { estado: 'declarada', nroOperacion, fechaDeclaracion: new Date().toISOString(), declaradaPor: S.usuarioActivo }); save(); },
+    guardarProducto(datos) {
+      const errores = I().validarProducto(datos, S.productos);
+      if (errores.length) throw new (I().ErrorStock)(errores[0]);
+      if (datos.id) { Object.assign(producto(datos.id), datos); save(); return producto(datos.id); }
+      const p = Object.assign({ activo: true, requiereReceta: false, sigtrazavet: false, principioActivo: '' }, datos, { id: uid('pr') });
+      S.productos.push(p); save(); return p;
+    },
     cambiarUsuario(id) { if (S.usuarios.some((u) => u.id === id)) { S.usuarioActivo = id; save(); } },
     addPaciente(p, t) {
       if (t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); p.tutorId = t.id; }
@@ -265,7 +302,8 @@
   const puedeAccion = (accion) => Dominio.permisos.puedeAccion(rol(), accion);
 
   window.Store = {
-    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
+    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion, producto, catalogosVisibles, inventarioAlertas,
+    puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
     triage, notificaciones, qaStats, hemoAlertas, RES_LABEL, A,
   };

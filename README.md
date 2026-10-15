@@ -14,7 +14,9 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 |---|---|
 | 4 · Inicio | Prioridades del día, agenda de hoy, estudios recientes, cupo de soporte |
 | 6 · Pacientes y turnos | Alta/edición, búsqueda por mascota, raza, tutor o documento, **Buscar en la red** EISPLUS, tutores · Agenda 7/14/21 días, pedidos del **Portal Cliente**, cierre de turnos pasados |
-| 7 · Estudios | Carga de radiografía (subida o del conjunto de test del TP) → la **CNN** la clasifica Normal / Incierto / Patológico con su probabilidad, y muestra el Grad-CAM |
+| — · Tutores | Ficha con contacto, mascotas a cargo, historial de turnos y compras; alta con validación de DNI/CUIT/pasaporte; baja lógica |
+| — · Inventario | Pet shop (alimentos, correas y accesorios, ropa, juguetes) y farmacia (antiparasitarios, medicamentos, vacunas, insumos): stock por lotes, mínimo con alerta, vencimientos a 30 días, ingreso de mercadería, ajustes sin stock negativo y declaraciones SIGTRAZAVET pendientes (Res. SENASA 654/2026, art. 12) |
+| 7 · Imágenes | Carga de radiografía (subida o del conjunto de test del TP) → la **CNN** la clasifica Normal / Incierto / Patológico con su probabilidad, y muestra el Grad-CAM |
 | 8 · Triage | Urgente / A revisar, estado del informe y días de espera |
 | 9 · Informes | Borrador generado por IA, editable, que solo pasa a firmado cuando el veterinario lo revisa y lo firma |
 | 10 · Red EISPLUS | Derivaciones para segunda lectura · Interconsultas con cupo mensual (Pack 100) y conversación con soporte |
@@ -64,7 +66,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos) y permisos.
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores y stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, anulación).
 
 ## Estructura
 
@@ -73,13 +75,13 @@ tests/            tests de la lógica de negocio
 index.html        estructura (el menú en 5 áreas plegables se arma en js/app.js)
 css/styles.css    estilos (mismo look que las capturas de la presentación)
 js/data.js        datos de ejemplo
-js/dominio/       lógica de negocio pura (migraciones, permisos), testeada con node --test
+js/dominio/       lógica de negocio pura (migraciones, permisos, tutores, inventario), testeada con node --test
 js/store.js       estado, persistencia, migraciones y métricas
 js/cnn.js         carga de los modelos, inferencia, Grad-CAM, evaluación y reentrenamiento
 js/model/         modelos del TP convertidos a TensorFlow.js + conjunto de test (incrustados para funcionar sin servidor)
 js/vendor/        TensorFlow.js 4.22
 js/ui.js          íconos, modales, avisos y visor de radiografías
-js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, servicios, red)
+js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, inventario, servicios, red)
 js/arcion.js      asistente ARCION
 js/app.js         navegación y notificaciones
 ```
