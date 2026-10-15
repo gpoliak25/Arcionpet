@@ -177,6 +177,24 @@ th.actions { text-align: right; }
 .b-solid-orange { background: #F59E0B; color: #fff; font-weight: 600; }
 .b-solid-gray { background: #64748B; color: #fff; font-weight: 600; }
 .chip { display: inline-block; padding: 1px 10px; border-radius: 999px; background: #EEF2F6; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button.chip { border: 1px solid var(--line); background: #fff; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+.chips button.chip:hover { border-color: var(--green); color: var(--green); }
+/* Calendario por recurso */
+.cal { display: grid; overflow-x: auto; padding: 0 16px 0 6px; }
+.cal-h { padding: 10px 8px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; background: var(--card, #fff); }
+.cal-h span { font-size: 12px; color: var(--muted); }
+.cal-horas { position: relative; }
+.cal-horas span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--muted); }
+.cal-horas span:first-child { transform: none; }
+.cal-col { position: relative; border-left: 1px solid var(--line); cursor: copy; background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px); }
+.cal-ev { position: absolute; left: 4px; right: 4px; border-radius: 8px; padding: 3px 7px; text-align: left; font: inherit; font-size: 12px; line-height: 1.25; overflow: hidden; cursor: pointer; border: 1px solid; display: flex; flex-direction: column; }
+.cal-ev span { opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev.blue { background: #EAF2FF; border-color: #BFD5FB; color: #1E40AF; }
+.cal-ev.amber { background: #FFF7E6; border-color: #F5D9A8; color: #92400E; }
+.cal-ev.green { background: #E9F8EF; border-color: #B7E4C7; color: #166534; }
+.cal-ev.gray { background: #F1F3F5; border-color: #DDE1E6; color: #6B7280; text-decoration: line-through; }
 
 /* ---------- Search / toolbars ---------- */
 .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }

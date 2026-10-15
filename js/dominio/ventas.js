@@ -63,6 +63,13 @@
     return e;
   }
 
+  const precioServicio = (sl, sv) => (sl.precio != null ? sl.precio : sv.precio);
+  /* Línea de venta de un servicio: no mueve stock. */
+  function lineaServicio(sl, servicios) {
+    const sv = servicios.find((x) => x.id === sl.servicioId), pu = precioServicio(sl, sv), cant = sl.cantidad || 1;
+    return { servicioId: sv.id, nombre: sl.descripcion || sv.nombre, presentacion: 'Servicio', catalogo: 'servicios', servicio: true, turnoId: sl.turnoId || null, cantidad: cant, precioUnit: pu, subtotal: pu * cant, lotes: [] };
+  }
+
   /* Valida una venta antes de registrarla. estado = { tutores, pacientes, productos, lotes, recetas }. */
   function validarVenta(estado, venta, hoy, rol) {
     const e = [];
@@ -72,7 +79,12 @@
     const pac = venta.pacienteId ? estado.pacientes.find((p) => p.id === venta.pacienteId) : null;
     if (venta.pacienteId && (!pac || (tutor && pac.tutorId !== tutor.id))) e.push('La mascota no pertenece al tutor');
     if (!MEDIOS[venta.medioPago]) e.push('Elegí el medio de pago');
-    if (!(venta.items || []).length) e.push('Agregá al menos un producto');
+    if (!(venta.items || []).length && !(venta.servicios || []).length) e.push('Agregá al menos un producto o servicio');
+    (venta.servicios || []).forEach((sl) => {
+      const sv = (estado.servicios || []).find((x) => x.id === sl.servicioId);
+      if (!sv || sv.activo === false) e.push('Servicio inexistente o inactivo');
+      else if (!(precioServicio(sl, sv) > 0)) e.push(sv.nombre + ': el precio debe ser mayor a cero');
+    });
     const conReceta = [];
     (venta.items || []).forEach((it) => {
       const p = estado.productos.find((x) => x.id === it.productoId);
@@ -111,13 +123,14 @@
     const s = clonar(estado);
     const id = ctx.id('vt');
     let d;
+    venta = Object.assign({}, venta, { items: venta.items || [] });
     try { d = I.descontar(s, venta.items.map((i) => ({ productoId: i.productoId, cantidad: i.cantidad })), Object.assign({}, ctx, { ref: id, tipo: 'venta' })); }
     catch (err) { if (err instanceof I.ErrorStock) throw new ErrorVenta(err.message); throw err; }
     ['productos', 'lotes', 'movimientos'].forEach((k) => { s[k] = d.inv[k]; });
     const items = venta.items.map((i, k) => {
       const p = s.productos.find((x) => x.id === i.productoId);
       return { productoId: p.id, nombre: p.nombre, presentacion: p.presentacion, catalogo: p.catalogo, requiereReceta: !!p.requiereReceta, sigtrazavet: !!p.sigtrazavet, cantidad: i.cantidad, precioUnit: p.precio, subtotal: p.precio * i.cantidad, lotes: d.asignaciones[k].plan };
-    });
+    }).concat((venta.servicios || []).map((sl) => lineaServicio(sl, estado.servicios)));
     const tot = totales(items);
     s.ventas = s.ventas || []; s.recetas = s.recetas || []; s.declaraciones = s.declaraciones || [];
     let recetaId = null;

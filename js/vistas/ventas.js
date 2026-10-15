@@ -112,7 +112,8 @@
   }
 
   /* =========================================================== PUNTO DE VENTA */
-  const pos = () => (ui.pos = ui.pos || { tutorId: '', pacienteId: '', items: [], medioPago: 'efectivo', cuotas: 1, receta: null, cat: null, q: '', pv: Store.facturacionCfg().puntoVenta, cf: { nombre: '', condicionIva: 'Consumidor final', cuit: '' } });
+  const posInicial = () => ({ tutorId: '', pacienteId: '', items: [], servicios: [], medioPago: 'efectivo', cuotas: 1, receta: null, cat: null, q: '', pv: Store.facturacionCfg().puntoVenta, cf: { nombre: '', condicionIva: 'Consumidor final', cuit: '' } });
+  const pos = () => (ui.pos = ui.pos || posInicial());
   const agregar = (P, pid) => { const it = P.items.find((x) => x.productoId === pid); if (it) it.cantidad++; else P.items.push({ productoId: pid, cantidad: 1 }); };
   function ventaNueva() {
     const P = pos();
@@ -126,7 +127,8 @@
     const prods = S().productos.filter((p) => p.activo !== false && p.catalogo === P.cat && match(P.q, p.nombre, p.marca, p.presentacion, p.sku, p.categoria, p.principioActivo))
       .sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nombre.localeCompare(b.nombre));
     const items = P.items.map((it) => Object.assign({ p: Store.producto(it.productoId) }, it)).filter((x) => x.p);
-    const tot = V().totales(items.map((x) => ({ precioUnit: x.p.precio, cantidad: x.cantidad })));
+    P.servicios = P.servicios || [];
+    const tot = V().totales(items.map((x) => ({ precioUnit: x.p.precio, cantidad: x.cantidad })).concat(P.servicios.map((sl) => ({ precioUnit: sl.precio, cantidad: 1 }))));
     const necesitaReceta = items.some((x) => x.p.requiereReceta);
     if (!necesitaReceta) P.receta = null;
     const disponibles = necesitaReceta && tutor ? V().recetasDisponibles(S().recetas, tutor, P.pacienteId, hoy()) : [];
@@ -171,12 +173,14 @@
       '<div class="section-title">Carrito</div>' +
       (items.length ? items.map((x) => '<div class="pos-item"><div class="grow"><div class="t">' + esc(x.p.nombre) + (x.p.requiereReceta ? ' <span class="badge b-violet">Receta</span>' : '') + '</div><div class="s">' + esc(x.p.presentacion) + ' · ' + pesos(x.p.precio) + ' c/u</div></div>' +
         '<div class="qty"><button data-menos="' + x.productoId + '" aria-label="Menos">−</button><span>' + x.cantidad + '</span><button data-mas="' + x.productoId + '" aria-label="Más">+</button></div><div class="strong nowrap" style="width:96px;text-align:right">' + pesos(x.p.precio * x.cantidad) + '</div><button class="icon-btn danger" data-quitar="' + x.productoId + '" aria-label="Quitar">' + icon('x') + '</button></div>').join('')
-        : '<p class="muted small">Agregá productos desde la izquierda.</p>') +
+        : '') +
+      P.servicios.map((sl, k) => '<div class="pos-item"><div class="grow"><div class="t">' + esc(sl.descripcion) + ' <span class="badge b-blue">Servicio</span></div><div class="s">' + (sl.turnoId ? 'Turno atendido' : 'Servicio') + '</div></div><div class="strong nowrap" style="width:96px;text-align:right">' + pesos(sl.precio) + '</div><button class="icon-btn danger" data-qserv="' + k + '" aria-label="Quitar">' + icon('x') + '</button></div>').join('') +
+      (items.length || P.servicios.length ? '' : '<p class="muted small">Agregá productos desde la izquierda.</p>') +
       recetaHtml +
       '<div class="section-title">Medio de pago</div><div class="seg pos-medios">' + Object.entries(V().MEDIOS).map(([k, l]) => '<button data-medio="' + k + '" class="' + (P.medioPago === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
       (P.medioPago === 'credito' ? '<div class="field" style="margin-top:10px;max-width:200px"><label>Cuotas</label><select id="pos-cuotas">' + [1, 3, 6, 12].map((c) => '<option' + (P.cuotas === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></div>' : '') +
-      '<div class="pos-total"><div><div class="small muted">IVA contenido (21 %): ' + pesos(tot.ivaContenido) + '</div><div class="small muted">' + items.reduce((t, x) => t + x.cantidad, 0) + ' unidades</div></div><div class="n">' + pesos(tot.total) + '</div></div>' +
-      '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn" id="pos-limpiar">Vaciar</button><button class="btn primary" id="pos-ok" style="flex:1;justify-content:center"' + (items.length && cajaOk ? '' : ' disabled') + ' title="' + (cajaOk ? '' : 'Abrí la caja para vender') + '">' + icon('check') + 'Confirmar venta y facturar</button></div>' +
+      '<div class="pos-total"><div><div class="small muted">IVA contenido (21 %): ' + pesos(tot.ivaContenido) + '</div><div class="small muted">' + items.reduce((t, x) => t + x.cantidad, 0) + ' unidades' + (P.servicios.length ? ' · ' + P.servicios.length + ' servicio' + (P.servicios.length > 1 ? 's' : '') : '') + '</div></div><div class="n">' + pesos(tot.total) + '</div></div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn" id="pos-limpiar">Vaciar</button><button class="btn primary" id="pos-ok" style="flex:1;justify-content:center"' + ((items.length || P.servicios.length) && cajaOk ? '' : ' disabled') + ' title="' + (cajaOk ? '' : 'Abrí la caja para vender') + '">' + icon('check') + 'Confirmar venta y facturar</button></div>' +
       '</div></div></div>';
 
     return {
@@ -203,6 +207,7 @@
         on(root, '[data-mas]', 'click', (el) => { const it = P.items.find((x) => x.productoId === el.dataset.mas); const e = I().estado(Store.producto(it.productoId), S().lotes, hoy()); if (it.cantidad >= e.vendible) return toast('No hay más stock vendible de este producto', 'warn'); it.cantidad++; App.render(); });
         on(root, '[data-menos]', 'click', (el) => { const it = P.items.find((x) => x.productoId === el.dataset.menos); it.cantidad--; if (!it.cantidad) P.items = P.items.filter((x) => x !== it); App.render(); });
         on(root, '[data-quitar]', 'click', (el) => { P.items = P.items.filter((x) => x.productoId !== el.dataset.quitar); App.render(); });
+        on(root, '[data-qserv]', 'click', (el) => { P.servicios.splice(Number(el.dataset.qserv), 1); App.render(); });
         on(root, '[data-medio]', 'click', (el) => { P.medioPago = el.dataset.medio; App.render(); });
         root.querySelector('#pos-tutor').onchange = (e) => { P.tutorId = e.target.value; P.pacienteId = ''; P.receta = null; const ms = S().pacientes.filter((p) => p.tutorId === P.tutorId); if (ms.length === 1) P.pacienteId = ms[0].id; App.render(); };
         root.querySelector('#pos-pac').onchange = (e) => { P.pacienteId = e.target.value; P.receta = null; App.render(); };
@@ -216,7 +221,7 @@
         b('#rv-quitar', () => { P.receta = null; App.render(); });
         const sel = root.querySelector('#rv-sel'); if (sel) sel.onchange = (e) => { P.receta = (S().recetas || []).find((r) => r.id === e.target.value) || null; App.render(); };
         root.querySelector('#pos-ok').onclick = () => {
-          const venta = { tutorId: P.tutorId || null, pacienteId: P.pacienteId || null, cliente: P.tutorId ? null : P.cf, puntoVenta: Number(P.pv), medioPago: P.medioPago, cuotas: P.cuotas, items: P.items.map((x) => ({ productoId: x.productoId, cantidad: x.cantidad })), receta: P.receta };
+          const venta = { tutorId: P.tutorId || null, pacienteId: P.pacienteId || null, cliente: P.tutorId ? null : P.cf, puntoVenta: Number(P.pv), medioPago: P.medioPago, cuotas: P.cuotas, items: P.items.map((x) => ({ productoId: x.productoId, cantidad: x.cantidad })), servicios: P.servicios, receta: P.receta };
           intentar(() => Store.A.registrarVenta(venta), (v) => { ui.pos = null; go('#/ventas'); setTimeout(() => comprobante(v.id), 50); toast('Venta ' + nro(v) + ' registrada'); });
         };
       },
@@ -338,11 +343,11 @@
           title: 'Devolución · venta ' + nro(v), wide: true,
           body: '<p class="muted" style="margin-top:0">Indicá cuántas unidades vuelven. Se repone el stock en el lote de origen, se emite una nota de crédito y se registra el reintegro en la caja (' + esc(V().MEDIOS[v.medioPago]) + ').' + (rv && rv.tipo !== 'botiquin' ? ' Si se devuelve todo, la receta vuelve a estar disponible mientras siga vigente.' : '') + ' Las operaciones ya declaradas en SIGTRAZAVET quedan pendientes de anulación (art. 8 c, 20 días).</p>' +
             '<div class="table-wrap"><table><thead><tr><th>Producto</th><th style="text-align:right">Vendidas</th><th style="text-align:right">Ya devueltas</th><th style="width:120px">Devolver</th></tr></thead><tbody>' +
-            v.items.map((i) => { const max = i.cantidad - devuelto(i.productoId); return '<tr><td>' + esc(i.nombre) + '</td><td style="text-align:right">' + i.cantidad + '</td><td style="text-align:right">' + devuelto(i.productoId) + '</td><td><input type="number" min="0" max="' + max + '" step="1" value="0" data-dev="' + i.productoId + '" data-pu="' + i.precioUnit + '"' + (max ? '' : ' disabled') + '></td></tr>'; }).join('') +
+            v.items.map((i) => { const max = i.servicio ? 0 : i.cantidad - devuelto(i.productoId); return '<tr><td>' + esc(i.nombre) + '</td><td style="text-align:right">' + i.cantidad + '</td><td style="text-align:right">' + devuelto(i.productoId) + '</td><td><input type="number" min="0" max="' + max + '" step="1" value="0" data-dev="' + i.productoId + '" data-pu="' + i.precioUnit + '"' + (max ? '' : ' disabled') + '></td></tr>'; }).join('') +
             '</tbody></table></div><div class="form-grid" style="margin-top:12px"><div class="field"><label>Motivo *</label><input name="motivo" placeholder="Ej.: producto fallado, error de carga"></div><div class="field"><label>A reintegrar</label><input id="dv-tot" readonly value="' + pesos(0) + '"></div></div>',
           foot: '<button class="btn" data-close>Cancelar</button><button class="btn" id="dv-todo">Devolver todo</button><button class="btn danger" id="dv-ok">Registrar devolución</button>',
           onMount(m2) {
-            const ins = [...m2.querySelectorAll('[data-dev]')];
+            const ins = [...m2.querySelectorAll('[data-dev]:not([disabled])')];
             const tot = () => { m2.querySelector('#dv-tot').value = pesos(ins.reduce((s, el) => s + (Number(el.value) || 0) * Number(el.dataset.pu), 0)); };
             ins.forEach((el) => { el.oninput = tot; });
             m2.querySelector('#dv-todo').onclick = () => { ins.forEach((el) => { el.value = el.max; }); tot(); };
@@ -406,5 +411,6 @@
     });
   }
 
+  ventaNueva.estadoInicial = posInicial;
   Object.assign(window.Views, { ventas, ventaNueva, ventaDetalle, comprobante, recetaForm, rveNueva, cargarCuve });
 })();
