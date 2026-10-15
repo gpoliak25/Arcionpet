@@ -316,6 +316,24 @@
         return s;
       },
     },
+    {
+      de: 17, a: 18, descripcion: 'Control de calidad: clase real confirmada, hallazgos codificados y veterinario por id en cada evaluación',
+      up(s) {
+        const CODIGOS = [[/cardio/i, 'TX-CAR-01'], [/intersticial/i, 'TX-PUL-01'], [/alveolar/i, 'TX-PUL-02'], [/bronquial/i, 'TX-PUL-03'], [/efusi|derrame/i, 'TX-PLE-01'], [/neumot/i, 'TX-PLE-02'], [/masa|n[oó]dulo/i, 'TX-PUL-04'], [/edema/i, 'TX-PUL-05'], [/megaes/i, 'TX-MED-02'], [/traque/i, 'TX-VIA-01']];
+        const vets = s.usuarios || [];
+        s.evaluaciones = (s.evaluaciones || []).map((q) => {
+          const cod = CODIGOS.filter(([re]) => re.test(q.correccion || '')).map(([, c]) => c);
+          const real = q.veredicto === 'coincide' && q.ia !== 'incierto' ? q.ia : q.veredicto === 'corrige' ? 'patologico' : null;
+          const hall = cod.length ? cod : real === 'normal' ? ['TX-00'] : [];
+          return Object.assign({ claseReal: real, hallazgos: hall, vetId: (vets.find((u) => u.nombre === q.vet) || {}).id || null }, q);
+        });
+        return s;
+      },
+      down(s) {
+        s.evaluaciones = (s.evaluaciones || []).map((q) => { const c = Object.assign({}, q); delete c.claseReal; delete c.hallazgos; delete c.vetId; return c; });
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

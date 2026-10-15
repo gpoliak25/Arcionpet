@@ -22,8 +22,8 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | 8 · Triage | Urgente / A revisar, estado del informe y días de espera |
 | 9 · Informes | Borrador generado por IA, editable, que solo pasa a firmado cuando el veterinario lo revisa y lo firma |
 | 10 · Red EISPLUS | Derivaciones para segunda lectura · Interconsultas con cupo mensual (Pack 100) y conversación con soporte |
-| 11 · Control de calidad | Concordancia IA–vet, correcciones, exportación del dataset en CSV/JSON |
-| 12 · Analítica | Actividad, resultados de la IA, estudios por mes, hallazgos frecuentes |
+| 11 · Control de calidad | Concordancia IA–vet con intervalo de confianza y **aviso de muestra chica** (n < 30), matriz de confusión, falsos negativos y positivos para revisar, catálogo de **hallazgos codificados** (se eligen al firmar, junto con la clase real), exportación **anonimizada** en CSV/JSON (sin nombres ni texto libre, fechas por mes, seudónimos) |
+| 12 · Analítica | Filtro por período y pestañas de Diagnóstico (con la misma concordancia que Control de calidad), Turnos (clínica y peluquería: estados, ausentismo, servicios, portal), Ventas (facturación neta, medios, rubros, más vendidos) y Hemocomponentes (transfusiones, vencidas, descarte, disponibles) |
 | — · Modelo CNN | Los 3 modelos del TP evaluados en vivo sobre el test (AUC, ROC, matrices de confusión, aciertos y errores por imagen) y reentrenamiento de la capa final con radiografías de la clínica |
 | 13 · ARCION | Asistente (botón flotante y página propia): dudas de uso y consultas de pacientes, turnos y stock |
 | 14 · Hemocomponentes | Vista unificada de la red, disponibilidad por tipo y grupo, alertas de vencimiento, trazabilidad de cada unidad del donante al paciente |
@@ -33,7 +33,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 1. **Inicio**: "Tenés N cosas que necesitan tu atención". Mostrar las prioridades del día.
 2. **Estudios → Nuevo estudio**: elegir una radiografía del conjunto de test. La CNN la analiza y devuelve su probabilidad de patología; tocar **Ver Grad-CAM** y comparar con la etiqueta real.
 3. **Generar borrador con IA** → editar una línea → **Revisar y firmar** → elegir "Corrijo el resultado".
-4. **Control de calidad**: aparece la nueva evaluación; descargar el **CSV**.
+4. **Control de calidad**: aparece la nueva evaluación; descargar el **CSV anonimizado**.
 5. **Triage**: ordenado por prioridad; abrir un estudio *Incierto* y **Derivar a especialista**. En **Derivaciones**, tocar *Simular respuesta*.
 6. **Interconsultas → Nueva interconsulta**: baja el cupo, y a los pocos segundos responde el soporte.
 7. **Turnos → Portal Cliente**: el tutor elige servicio y horario, cancela o reprograma; el pedido llega a la clínica, que lo confirma.
@@ -95,7 +95,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo), emisión de RVE y turnos (conflictos por recurso, horario, transiciones, reprogramación, horarios libres, vínculo con estudios y cobro de servicios) y peluquería (tamaño, cotización, servicios, fichas).
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo), emisión de RVE y turnos (conflictos por recurso, horario, transiciones, reprogramación, horarios libres, vínculo con estudios y cobro de servicios) peluquería (tamaño, cotización, servicios, fichas), control de calidad (concordancia, FN/FP, anonimización) y analítica por período.
 
 ## Estructura
 

@@ -354,15 +354,20 @@
         '<div class="field"><label>La IA clasificó el estudio como <b>' + Store.RES_LABEL[e.resultado] + '</b>. Tu veredicto:</label>' +
         '<select name="veredicto" id="f-ver"><option value="coincide">Coincido con la IA</option><option value="corrige">Corrijo el resultado</option><option value="descarta">Descarto el resultado de la IA</option></select></div>' +
         '<div class="field" id="f-cor" style="margin-top:12px;display:none"><label>Diagnóstico / corrección</label><input name="correccion" placeholder="Ej.: Patrón intersticial"></div>' +
+        '<div class="field" id="f-real" style="margin-top:12px;display:' + (e.resultado === 'incierto' ? '' : 'none') + '"><label>Según tu criterio, el estudio es</label><select name="claseReal"><option value="">— Elegí —</option><option value="normal">Normal</option><option value="patologico">Patológico</option></select></div>' +
+        '<div class="field" style="margin-top:12px"><label>Hallazgos (codificados)</label><div class="chips">' + Dominio.calidad.HALLAZGOS.map((h) => '<label class="chip" style="cursor:pointer"><input type="checkbox" name="h_' + h.codigo + '" style="margin-right:4px">' + esc(h.nombre) + '</label>').join('') + '</div></div>' +
         '<label style="display:flex;gap:8px;margin-top:16px;align-items:flex-start"><input type="checkbox" name="ok" style="margin-top:4px"><span>Revisé el estudio y el contenido del informe, y lo firmo bajo mi responsabilidad profesional.</span></label>',
       foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="s-ok">' + icon('pen') + 'Firmar como ' + esc(Store.usuario().nombre) + '</button>',
       onMount(m) {
-        const v = m.querySelector('#f-ver'); v.onchange = () => { m.querySelector('#f-cor').style.display = v.value === 'coincide' ? 'none' : ''; };
+        const v = m.querySelector('#f-ver'); v.onchange = () => { m.querySelector('#f-cor').style.display = v.value === 'coincide' ? 'none' : ''; m.querySelector('#f-real').style.display = v.value === 'coincide' && e.resultado !== 'incierto' ? 'none' : ''; };
         m.querySelector('#s-ok').onclick = () => {
           const f = formData(m);
           if (!f.ok) return toast('Confirmá que revisaste el informe', 'warn');
           if (f.veredicto !== 'coincide' && !f.correccion) return toast('Indicá la corrección', 'warn');
-          A.firmarInforme(iid, { texto, veredicto: f.veredicto, correccion: f.veredicto === 'coincide' ? null : f.correccion });
+          const pideClase = !(f.veredicto === 'coincide' && e.resultado !== 'incierto');
+          if (pideClase && !f.claseReal) return toast('Indicá si el estudio es normal o patológico: alimenta el control de calidad', 'warn');
+          const hallazgos = Dominio.calidad.HALLAZGOS.filter((h) => f['h_' + h.codigo]).map((h) => h.codigo);
+          A.firmarInforme(iid, { texto, veredicto: f.veredicto, correccion: f.veredicto === 'coincide' ? null : f.correccion, claseReal: pideClase ? f.claseReal : null, hallazgos });
           closeModal(); toast('Informe firmado. Se registró en control de calidad.');
         };
       },

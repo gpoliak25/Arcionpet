@@ -77,74 +77,104 @@
   }
 
   /* =========================================================== CONTROL DE CALIDAD */
-  function datasetRows() {
-    return S().evaluaciones.map((q) => {
-      const e = Store.estudio(q.estudioId) || {}, p = Store.paciente(e.pacienteId) || {};
-      return {
-        fecha: q.fecha.slice(0, 10), estudio_id: q.estudioId, paciente: p.nombre, especie: p.especie, tipo: e.tipo, proyeccion: e.proyeccion, motivo: e.motivo,
-        ia_modelo: e.modelo ? e.modelo.clave : '', ia_modelo_version: e.modelo ? e.modelo.version || '' : '', ia_resultado: q.ia, ia_probabilidad_patologia: e.probPatologia, veredicto: q.veredicto, correccion: q.correccion || '', imagen_dataset: e.imagenRef || '', etiqueta_dataset: (UI.refTest(e) || {}).clase || '',
-        etiqueta_final: q.veredicto === 'coincide' ? q.ia : (q.correccion || ''), veterinario: q.vet,
-      };
-    });
-  }
+  const CQ = () => Dominio.calidad, AN = () => Dominio.analitica;
+  const pctTxt = (v) => (v == null ? '—' : Math.round(v * 100) + '%');
+  /* Aviso de muestra chica: con pocas evaluaciones los porcentajes son orientativos. */
+  const avisoMuestra = (st) => (st.muestraChica ? '<div class="callout amber" style="margin-bottom:14px">' + icon('alert') + '<span><b>Muestra chica (n = ' + st.total + ', menos de ' + CQ().N_MINIMO + ').</b> Los porcentajes son orientativos' + (st.ic ? ': la concordancia real podría estar entre ' + pctTxt(st.ic[0]) + ' y ' + pctTxt(st.ic[1]) + ' (IC 95 %)' : '') + '.</span></div>' : '');
   function calidad() {
     const st = Store.qaStats();
-    const list = S().evaluaciones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).filter((q) => { const e = Store.estudio(q.estudioId) || {}, p = Store.paciente(e.pacienteId) || {}; return match(ui.qQa, p.nombre, q.vet, q.correccion || '', q.veredicto, Store.RES_LABEL[q.ia]); });
+    const list = S().evaluaciones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).filter((q) => { const e = Store.estudio(q.estudioId) || {}, p = Store.paciente(e.pacienteId) || {}; return match(ui.qQa, p.nombre, q.vet, q.correccion || '', q.veredicto, Store.RES_LABEL[q.ia], (q.hallazgos || []).map((c) => (CQ().hallazgo(c) || {}).nombre).join(' ')); });
     const VB = { coincide: ['Coincide', 'b-solid-green'], corrige: ['Corrige', 'b-solid-orange'], descarta: ['Descarta', 'b-solid-red'] };
-    const html = pageHead('clipboard', 'Control de calidad (QA)', 'Concordancia IA–veterinario y dataset etiquetado para reentrenamiento.', '<button class="btn" id="btn-csv">' + icon('download') + 'CSV</button><button class="btn" id="btn-json">' + icon('download') + 'JSON</button>') +
+    const REAL = { normal: 'Normal', patologico: 'Patológico' };
+    const c = st.confusion, freq = CQ().frecuenciaHallazgos(S().evaluaciones);
+    const caso = (q, tipo) => { const e = Store.estudio(q.estudioId) || {}; return '<div class="list-row clickable" data-go="#/estudios/' + q.estudioId + '"><div class="grow"><span class="t">' + pacLabel(Store.paciente(e.pacienteId)) + '</span> <span class="muted">· ' + fDate(q.fecha) + ' · IA: ' + Store.RES_LABEL[q.ia] + (e.probPatologia != null ? ' (' + e.probPatologia + ' %)' : '') + '</span><div class="s">' + esc(q.correccion || '') + ((q.hallazgos || []).length ? ' · ' + esc(q.hallazgos.map((x) => (CQ().hallazgo(x) || {}).nombre).join(', ')) : '') + '</div></div><span class="badge ' + (tipo === 'fn' ? 'b-patologico' : 'b-incierto') + '">' + (tipo === 'fn' ? 'Falso negativo' : 'Falso positivo') + '</span></div>'; };
+    const html = pageHead('clipboard', 'Control de calidad (QA)', 'Concordancia IA–veterinario, errores de la IA y dataset etiquetado para reentrenamiento.', '<button class="btn" id="btn-csv">' + icon('download') + 'CSV anonimizado</button><button class="btn" id="btn-json">' + icon('download') + 'JSON anonimizado</button>') +
+      avisoMuestra(st) +
       '<div class="grid kpis">' +
-      '<div class="card big-kpi"><div class="kl">Concordancia IA–vet</div><div class="kv" style="color:var(--green)">' + st.pct + '%</div><div class="ks">sobre ' + st.total + ' evaluados</div></div>' +
-      '<div class="card big-kpi"><div class="kl">Evaluados</div><div class="kv">' + st.total + '</div><div class="ks">con veredicto</div></div>' +
-      '<div class="card big-kpi"><div class="kl">Discrepancias</div><div class="kv" style="color:#EA580C">' + st.discrepancias + '</div><div class="ks">corrige o descarta</div></div></div>' +
+      '<div class="card big-kpi"><div class="kl">Concordancia IA–vet</div><div class="kv" style="color:var(--green)">' + st.pct + '%</div><div class="ks">' + st.coinciden + ' de ' + st.total + (st.ic ? ' · IC 95 %: ' + pctTxt(st.ic[0]) + '–' + pctTxt(st.ic[1]) : '') + '</div></div>' +
+      '<div class="card big-kpi"><div class="kl">Falsos negativos</div><div class="kv" style="color:var(--red)">' + c.fn + '</div><div class="ks">la IA dijo normal y era patológico</div></div>' +
+      '<div class="card big-kpi"><div class="kl">Falsos positivos</div><div class="kv" style="color:#EA580C">' + c.fp + '</div><div class="ks">la IA dijo patológico y era normal</div></div>' +
+      '<div class="card big-kpi"><div class="kl">Sensibilidad · especificidad</div><div class="kv">' + pctTxt(st.sensibilidad) + ' · ' + pctTxt(st.especificidad) + '</div><div class="ks">' + c.inciertos + ' incierto' + (c.inciertos === 1 ? '' : 's') + ' fuera del cálculo</div></div></div>' +
+      '<div class="grid halves">' +
+      '<div class="card"><div class="card-head"><h3>Matriz de confusión</h3></div><div class="card-pad"><table class="mini"><thead><tr><th></th><th>Real normal</th><th>Real patológico</th></tr></thead><tbody>' +
+        '<tr><th>IA normal</th><td>' + c.vn + '</td><td style="color:var(--red);font-weight:700">' + c.fn + ' FN</td></tr><tr><th>IA patológico</th><td style="color:#EA580C;font-weight:700">' + c.fp + ' FP</td><td>' + c.vp + '</td></tr></tbody></table>' +
+        '<p class="small muted">Inciertos: ' + c.inciertos + ' · sin clase confirmada: ' + c.sinClase + '. Veredictos: ' + st.porVeredicto.coincide + ' coinciden, ' + st.porVeredicto.corrige + ' corrigen, ' + st.porVeredicto.descarta + ' descartan.</p></div></div>' +
+      '<div class="card"><div class="card-head"><h3>Hallazgos codificados</h3></div><div class="card-pad" style="padding-top:8px">' + (freq.length ? freq.map((h) => '<div class="bar-row"><div class="bl"><span>' + esc(h.nombre) + ' <span class="sp">' + esc(h.codigo) + '</span></span><span>' + h.n + '</span></div><div class="progress"><div style="width:' + (h.n / freq[0].n * 100) + '%"></div></div></div>').join('') : '<p class="muted">Sin hallazgos codificados todavía.</p>') +
+        '<details style="margin-top:10px"><summary class="small">Ver el catálogo (' + CQ().HALLAZGOS.length + ')</summary><div class="small" style="margin-top:6px">' + CQ().HALLAZGOS.map((h) => '<div><b>' + esc(h.codigo) + '</b> · ' + esc(h.nombre) + '</div>').join('') + '</div></details></div></div></div>' +
+      (st.falsosNegativos.length || st.falsosPositivos.length ? '<div class="card" style="margin-bottom:20px"><div class="card-head"><span class="ic" style="color:var(--red)">' + icon('alert') + '</span><h3>Errores de la IA para revisar</h3></div>' + st.falsosNegativos.map((q) => caso(q, 'fn')).join('') + st.falsosPositivos.map((q) => caso(q, 'fp')).join('') + '</div>' : '') +
       '<div class="toolbar">' + searchBox('q-qa', 'Buscar por paciente, veterinario, hallazgo o veredicto…', ui.qQa) + '</div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>IA</th><th>Veredicto</th><th>Corrección</th><th>Veterinario/a</th></tr></thead><tbody>' +
-      (list.map((q) => { const e = Store.estudio(q.estudioId) || {}; return '<tr class="clickable" data-go="#/estudios/' + q.estudioId + '"><td class="strong">' + fDate(q.fecha) + '</td><td>' + pacLabel(Store.paciente(e.pacienteId)) + '</td><td>' + Store.RES_LABEL[q.ia] + '</td><td><span class="badge ' + VB[q.veredicto][1] + '">' + VB[q.veredicto][0] + '</span></td><td>' + (q.correccion ? esc(q.correccion) : '—') + '</td><td>' + esc(q.vet) + '</td></tr>'; }).join('') ||
-        '<tr><td colspan="6">' + empty('clipboard', 'Sin evaluaciones', '<span class="small">Se registran al firmar informes.</span>') + '</td></tr>') + '</tbody></table></div>';
+      '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>IA</th><th>Veredicto</th><th>Clase real</th><th>Hallazgos</th><th>Veterinario/a</th></tr></thead><tbody>' +
+      (list.map((q) => { const e = Store.estudio(q.estudioId) || {}, real = CQ().claseReal(q); return '<tr class="clickable" data-go="#/estudios/' + q.estudioId + '"><td class="strong">' + fDate(q.fecha) + '</td><td>' + pacLabel(Store.paciente(e.pacienteId)) + '</td><td>' + Store.RES_LABEL[q.ia] + '</td><td><span class="badge ' + VB[q.veredicto][1] + '">' + VB[q.veredicto][0] + '</span>' + (q.correccion ? '<div class="sp">' + esc(q.correccion) + '</div>' : '') + '</td><td>' + (real ? REAL[real] : '—') + '</td><td class="sp">' + esc((q.hallazgos || []).map((x) => (CQ().hallazgo(x) || { nombre: x }).nombre).join(', ') || '—') + '</td><td>' + esc(q.vet) + '</td></tr>'; }).join('') ||
+        '<tr><td colspan="7">' + empty('clipboard', 'Sin evaluaciones', '<span class="small">Se registran al firmar informes.</span>') + '</td></tr>') + '</tbody></table></div>' +
+      '<p class="small muted">La exportación es anonimizada: sin nombres de pacientes, tutores ni veterinarios, sin texto libre, con fechas por mes y seudónimos estables dentro de cada archivo.</p>';
     return {
       html, mount(root) {
         bindSearch(root, 'q-qa', 'qQa', () => App.render(true));
         on(root, '[data-go]', 'click', (el) => go(el.dataset.go));
         const stamp = new Date().toISOString().slice(0, 10);
-        root.querySelector('#btn-json').onclick = () => { download('arcionpet-dataset-' + stamp + '.json', JSON.stringify(datasetRows(), null, 2), 'application/json'); toast('Dataset exportado en JSON'); };
-        root.querySelector('#btn-csv').onclick = () => {
-          const rows = datasetRows(); if (!rows.length) return toast('No hay datos para exportar', 'warn');
-          const cols = Object.keys(rows[0]);
-          const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-          download('arcionpet-dataset-' + stamp + '.csv', '﻿' + [cols.join(',')].concat(rows.map((r) => cols.map((c) => q(r[c])).join(','))).join('\n'), 'text/csv;charset=utf-8');
-          toast('Dataset exportado en CSV');
-        };
+        const filas = () => CQ().anonimizar(Store.filasCalidad());
+        root.querySelector('#btn-json').onclick = () => { const f = filas(); if (!f.length) return toast('No hay datos para exportar', 'warn'); download('arcionpet-calidad-anonimizado-' + stamp + '.json', JSON.stringify(f, null, 2), 'application/json'); toast('Dataset anonimizado exportado en JSON'); };
+        root.querySelector('#btn-csv').onclick = () => { const f = filas(); if (!f.length) return toast('No hay datos para exportar', 'warn'); download('arcionpet-calidad-anonimizado-' + stamp + '.csv', '﻿' + CQ().csv(f), 'text/csv;charset=utf-8'); toast('Dataset anonimizado exportado en CSV'); };
       },
     };
   }
 
   /* =========================================================== ANALÍTICA */
+  const pesosA = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
+  const barras = (pares, total, fmt) => (pares.length ? pares.map(([l, n, c]) => '<div class="bar-row"><div class="bl"><span>' + esc(l) + '</span><span>' + (fmt ? fmt(n) : n) + (total ? ' (' + Math.round(n / total * 100) + '%)' : '') + '</span></div><div class="progress"><div style="width:' + (n / (total || Math.max(...pares.map((p) => p[1])) || 1) * 100) + '%' + (c ? ';background:' + c : '') + '"></div></div></div>').join('') : '<p class="muted">Sin datos en el período.</p>');
   function analitica() {
-    const s = S(), est = Store.estudiosActivos(), st = Store.qaStats(), now = new Date();
-    const esteMes = est.filter((e) => { const d = new Date(e.fecha); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).length;
-    const pendDer = s.derivaciones.filter((d) => d.estado === 'pendiente').length;
-    const cnt = (r) => est.filter((e) => e.resultado === r).length;
-    const total = est.length || 1;
-    const res = [['Patológico', cnt('patologico'), 'var(--red)'], ['Incierto', cnt('incierto'), 'var(--amber)'], ['Normal', cnt('normal'), 'var(--emerald)'], ['Sin análisis', est.filter((e) => !e.resultado).length, '#94A3B8']];
-    const analizados = est.filter((e) => e.resultado);
-    const firm = analizados.filter((e) => (Store.informeDeEstudio(e.id) || {}).estado === 'firmado').length;
-    const borr = analizados.filter((e) => (Store.informeDeEstudio(e.id) || {}).estado === 'borrador').length;
-    const meses = [];
-    for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); meses.push({ k: d.getFullYear() + '-' + d.getMonth(), l: String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getFullYear()).slice(2), n: 0 }); }
-    est.forEach((e) => { const d = new Date(e.fecha), m = meses.find((x) => x.k === d.getFullYear() + '-' + d.getMonth()); if (m) m.n++; });
-    const maxM = Math.max(1, ...meses.map((m) => m.n));
-    const hall = {};
-    est.forEach((e) => e.hallazgos.forEach((h) => { hall[h] = (hall[h] || 0) + 1; }));
-    const top = Object.entries(hall).sort((a, b) => b[1] - a[1]).slice(0, 6), maxH = top.length ? top[0][1] : 1;
-    const html = pageHead('chart', 'Analítica', 'Indicadores de actividad y calidad de la clínica.') +
-      '<div class="grid kpis">' + kpi('scan', '', 'Estudios totales', est.length, '') + kpi('calendar', '', 'Este mes', esteMes, '') + kpi('check', '', 'Concordancia IA–vet', st.pct + '%', st.total + ' evaluados') + kpi('stetho', '', 'Derivaciones pendientes', pendDer, '') + '</div>' +
-      '<div class="grid halves">' +
-      '<div class="card"><div class="card-head"><h3>Resultados de la IA</h3></div><div class="card-pad" style="padding-top:8px">' + res.map(([l, n, c]) => '<div class="bar-row"><div class="bl"><span>' + l + '</span><span>' + n + ' (' + Math.round(n / total * 100) + '%)</span></div><div class="progress"><div style="width:' + (n / total * 100) + '%;background:' + c + '"></div></div></div>').join('') + '</div></div>' +
-      '<div class="card"><div class="card-head"><h3>Estado de informes</h3></div><div class="trio"><div><div class="n" style="color:var(--emerald)">' + firm + '</div><div class="l">Firmados</div></div><div><div class="n" style="color:#EA580C">' + borr + '</div><div class="l">En borrador</div></div><div><div class="n" style="color:#64748B">' + (analizados.length - firm - borr) + '</div><div class="l">Sin informe</div></div></div></div>' +
-      '</div><div class="grid halves">' +
-      '<div class="card"><div class="card-head"><h3>Estudios por mes</h3></div><div class="card-pad"><div class="cols">' + meses.map((m) => '<div class="col"><span class="cv">' + m.n + '</span><div class="cb" style="height:' + (m.n / maxM * 150) + 'px"></div><span class="cl">' + m.l + '</span></div>').join('') + '</div></div></div>' +
-      '<div class="card"><div class="card-head"><h3>Hallazgos más frecuentes</h3></div><div class="card-pad" style="padding-top:8px">' + (top.length ? top.map(([h, n]) => '<div class="bar-row"><div class="bl"><span>' + esc(h) + '</span><span>' + n + '</span></div><div class="progress"><div style="width:' + (n / maxH * 100) + '%"></div></div></div>').join('') : '<p class="muted">Sin hallazgos registrados.</p>') + '</div></div>' +
-      '</div>';
-    return { html, mount() {} };
+    const s = S(), now = new Date();
+    const periodo = ui.anPeriodo || '30', r = AN().rango(periodo, now);
+    const TABS = [['diagnostico', 'Diagnóstico', 'imagenes'], ['turnos', 'Turnos', 'turnos'], ['ventas', 'Ventas', 'ventas'], ['hemo', 'Hemocomponentes', 'hemocomponentes']].filter((t) => Store.puede(t[2]));
+    const tab = TABS.some((t) => t[0] === ui.anTab) ? ui.anTab : TABS[0][0];
+    let cuerpo = '';
+    if (tab === 'diagnostico') {
+      const est = Store.estudiosActivos().filter((e) => AN().en(e.fecha, r));
+      const st = Store.qaStats((q) => AN().en(q.fecha, r));
+      const cnt = (x) => est.filter((e) => e.resultado === x).length, total = est.length;
+      const analizados = est.filter((e) => e.resultado);
+      const firm = analizados.filter((e) => (Store.informeDeEstudio(e.id) || {}).estado === 'firmado').length;
+      const borr = analizados.filter((e) => (Store.informeDeEstudio(e.id) || {}).estado === 'borrador').length;
+      const hall = {}; est.forEach((e) => e.hallazgos.forEach((h) => { hall[h] = (hall[h] || 0) + 1; }));
+      cuerpo = avisoMuestra(st) + '<div class="grid kpis">' + kpi('scan', '', 'Estudios', total, AN().PERIODOS[periodo].toLowerCase()) + kpi('check', '', 'Concordancia IA–vet', st.total ? st.pct + '%' : '—', st.total + ' evaluados' + (st.ic ? ' · IC 95 % ' + pctTxt(st.ic[0]) + '–' + pctTxt(st.ic[1]) : '')) +
+        kpi('alert', 'red', 'Falsos negativos', st.confusion.fn, 'en el período') + kpi('stetho', '', 'Derivaciones pendientes', s.derivaciones.filter((d) => d.estado === 'pendiente').length, '') + '</div>' +
+        '<div class="grid halves"><div class="card"><div class="card-head"><h3>Resultados de la IA</h3></div><div class="card-pad" style="padding-top:8px">' + barras([['Patológico', cnt('patologico'), 'var(--red)'], ['Incierto', cnt('incierto'), 'var(--amber)'], ['Normal', cnt('normal'), 'var(--emerald)'], ['Sin análisis', est.filter((e) => !e.resultado).length, '#94A3B8']], total || 1) + '</div></div>' +
+        '<div class="card"><div class="card-head"><h3>Estado de informes</h3></div><div class="trio"><div><div class="n" style="color:var(--emerald)">' + firm + '</div><div class="l">Firmados</div></div><div><div class="n" style="color:#EA580C">' + borr + '</div><div class="l">En borrador</div></div><div><div class="n" style="color:#64748B">' + (analizados.length - firm - borr) + '</div><div class="l">Sin informe</div></div></div></div></div>' +
+        '<div class="card"><div class="card-head"><h3>Hallazgos más frecuentes</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(hall).sort((a, b) => b[1] - a[1]).slice(0, 6)) + '</div></div>';
+    }
+    if (tab === 'turnos') {
+      const cl = AN().turnos(s.turnos, r, now), pe = AN().turnos(s.pelTurnos || [], r, now);
+      const ESTADO = Dominio.turnos.ESTADOS;
+      const bloque = (t, titulo) => '<div class="card"><div class="card-head"><h3>' + titulo + '</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(t.porEstado).map(([k, n]) => [ESTADO[k] || k, n]), t.total) +
+        '<div class="section-title">Por servicio</div>' + barras(t.porServicio.slice(0, 6)) + '</div></div>';
+      cuerpo = '<div class="grid kpis">' + kpi('calendar', '', 'Turnos de la clínica', cl.total, AN().PERIODOS[periodo].toLowerCase()) + kpi('userx', 'amber', 'Ausentismo', cl.ausentismo + '%', 'no vino sobre turnos cerrados') + kpi('globe', '', 'Pedidos desde el portal', cl.desdePortal + '%', 'del total') +
+        (Store.moduloHabilitado('peluqueria') ? kpi('scissors', 'violet', 'Turnos de peluquería', pe.total, 'ausentismo ' + pe.ausentismo + '%') : '') + '</div>' +
+        '<div class="grid halves">' + bloque(cl, 'Clínica') + (Store.moduloHabilitado('peluqueria') ? bloque(pe, 'Peluquería') : '') + '</div>';
+    }
+    if (tab === 'ventas') {
+      const v = AN().ventas(s.ventas, r);
+      const CAT = { petshop: 'Pet shop', farmacia: 'Farmacia', servicios: 'Servicios' };
+      cuerpo = '<div class="grid kpis">' + kpi('cart', '', 'Ventas', v.cantidad, AN().PERIODOS[periodo].toLowerCase()) + kpi('file', 'violet', 'Facturación neta', pesosA(v.total), 'IVA incluido, sin devoluciones') + kpi('chart', '', 'Ticket promedio', pesosA(v.ticket), '') + kpi('history', 'amber', 'Devoluciones', pesosA(v.devoluciones), '') + '</div>' +
+        '<div class="grid halves"><div class="card"><div class="card-head"><h3>Por medio de pago</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(v.porMedio).sort((a, b) => b[1] - a[1]).map(([k, n]) => [Dominio.ventas.MEDIOS[k] || k, n]), v.total, pesosA) + '</div></div>' +
+        '<div class="card"><div class="card-head"><h3>Por rubro</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(v.porCatalogo).sort((a, b) => b[1] - a[1]).map(([k, n]) => [CAT[k] || k, n]), Object.values(v.porCatalogo).reduce((a, b) => a + b, 0), pesosA) + '</div></div></div>' +
+        '<div class="card"><div class="card-head"><h3>Más vendidos</h3></div><div class="card-pad" style="padding-top:8px">' + barras(v.top.map((x) => [x.nombre + ' · ' + x.unidades + ' u.', x.importe]), 0, pesosA) + '</div></div>';
+    }
+    if (tab === 'hemo') {
+      const h = AN().hemocomponentes(s.hemo, r);
+      const EST = { disponible: 'Disponible', reservada: 'Reservada', transfundida: 'Transfundida', vencida: 'Vencida', en_transito: 'En tránsito' };
+      cuerpo = '<div class="grid kpis">' + kpi('drop', 'red', 'Transfusiones', h.transfusiones, AN().PERIODOS[periodo].toLowerCase()) + kpi('clock', 'amber', 'Unidades vencidas', h.vencidas, 'sin uso en el período') + kpi('chart', '', 'Descarte', h.descarte + '%', 'vencidas sobre usadas + vencidas') + kpi('drop', '', 'Disponibles hoy', h.porEstado.disponible || 0, 'en la red') + '</div>' +
+        '<div class="grid halves"><div class="card"><div class="card-head"><h3>Unidades por estado (hoy)</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(h.porEstado).map(([k, n]) => [EST[k] || k, n]), s.hemo.length) + '</div></div>' +
+        '<div class="card"><div class="card-head"><h3>Disponibles por componente</h3></div><div class="card-pad" style="padding-top:8px">' + barras(Object.entries(h.disponiblesPorComp).sort((a, b) => b[1] - a[1])) + '</div></div></div>';
+    }
+    const html = pageHead('chart', 'Analítica', 'Indicadores de la clínica por período. La concordancia de la IA se calcula igual que en Control de calidad.') +
+      '<div class="toolbar"><div class="seg">' + Object.entries(AN().PERIODOS).map(([k, l]) => '<button data-per="' + k + '" class="' + (String(periodo) === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>' +
+      '<div class="tabs">' + TABS.map(([k, l]) => '<button data-an="' + k + '" class="' + (k === tab ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' + cuerpo;
+    return {
+      html, mount(root) {
+        on(root, '[data-per]', 'click', (el) => { ui.anPeriodo = el.dataset.per; App.render(); });
+        on(root, '[data-an]', 'click', (el) => { ui.anTab = el.dataset.an; App.render(); });
+      },
+    };
   }
 
   /* =========================================================== MODELO CNN */
@@ -308,5 +338,5 @@
       lista.map((a) => '<tr><td class="nowrap">' + fShort(a.fecha) + '</td><td>' + esc(Store.nombreUsuario(a.usuario)) + '</td><td>' + TXT[a.accion] + '</td><td class="sp">' + esc(a.de ? a.de.version : '') + '</td><td class="sp">' + esc(a.a ? a.a.version : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
   }
 
-  Object.assign(window.Views, { interconsultas, interconsultaForm, simularSoporte, interconsultaDetalle, datasetRows, calidad, analitica, rocSvg, matriz, modelo, evaluarPendientes, reentrenoHtml, bindReentreno, datosEntrenamiento, auditoriaModelo });
+  Object.assign(window.Views, { interconsultas, interconsultaForm, simularSoporte, interconsultaDetalle, datasetRows: () => Dominio.calidad.anonimizar(Store.filasCalidad()), calidad, analitica, rocSvg, matriz, modelo, evaluarPendientes, reentrenoHtml, bindReentreno, datosEntrenamiento, auditoriaModelo });
 })();
