@@ -1,18 +1,46 @@
-/* ARCION aplicado a la veterinaria: asistente que responde dudas de uso y consulta los datos de la clínica.
-   Funciona 100% local con reconocimiento de intenciones, para que la demo no dependa de conexión. */
+/* ARCION Pet: asistente que responde dudas de uso y consulta los datos de la clínica.
+   Funciona 100% local con reconocimiento de intenciones. Solo muestra lo que el rol activo puede ver: cada respuesta
+   y cada enlace a un registro respeta los permisos. Las conversaciones quedan en el historial de cada usuario. */
 (function () {
   const { icon, esc, fDate, fTime, fShort } = UI;
   const S = () => Store.s;
   const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[¿?¡!.,;:]/g, ' ');
   const has = (t, ...words) => words.some((w) => t.includes(w));
-  const link = (href, label) => '<a class="btn sm go" href="' + href + '">' + label + ' →</a>';
+  const NOMBRE = 'ARCION Pet';
+  /* Enlace a una pantalla: solo si el rol activo puede abrirla. */
+  const link = (href, label) => (window.App && App.puedeRuta && !App.puedeRuta(href) ? '' : '<a class="btn sm go" href="' + href + '">' + label + ' →</a>');
+  /* Registro citado (paciente, tutor, turno, producto, estudio, informe, venta, receta, unidad de sangre). */
+  const MOD_REF = { paciente: 'pacientes', tutor: 'tutores', turno: 'turnos', estudio: 'imagenes', informe: 'informes', venta: 'ventas', receta: 'recetas', unidad: 'hemocomponentes' };
+  function puedeRef(tipo, id) {
+    if (tipo === 'producto') { const p = Store.producto(id); return !!p && Store.catalogosVisibles().includes(p.catalogo) && Store.puede(p.catalogo); }
+    return Store.puede(MOD_REF[tipo]);
+  }
+  const ref = (tipo, id, label) => (puedeRef(tipo, id) ? '<a href="#" class="ref" data-ref="' + tipo + ':' + esc(id) + '">' + esc(label) + '</a>' : esc(label));
+  function abrirRef(tipo, id) {
+    if (!puedeRef(tipo, id)) return UI.toast('Con tu rol no podés abrir ese registro', 'warn');
+    const ir = (h) => { location.hash = h; };
+    ({
+      paciente: () => Views.pacienteDetalle(id), tutor: () => ir('#/tutores/' + id), turno: () => { ir('#/turnos'); setTimeout(() => Views.turnoDetalle(id), 80); },
+      producto: () => Views.productoDetalle(id), estudio: () => ir('#/estudios/' + id), informe: () => ir('#/informes/' + id),
+      venta: () => Views.ventaDetalle(id), receta: () => ir('#/recetas'), unidad: () => { ir('#/hemocomponentes'); setTimeout(() => Views.hemoUnidad(id), 80); },
+    })[tipo]();
+  }
   const list = (items) => '<ul>' + items.map((i) => '<li>' + i + '</li>').join('') + '</ul>';
 
   const NOMBRE_MODULO = { ventas: 'ventas', inventario: 'inventario', hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
-  const history = [];
+  /* Conversación en curso del usuario activo (se guarda en el historial al primer mensaje). */
+  let conv = null;
+  const nueva = () => ({ id: null, usuarioId: Store.usuario().id, inicio: null, titulo: '', mensajes: [] });
+  const actual = () => { if (!conv || conv.usuarioId !== Store.usuario().id) conv = nueva(); return conv; };
   const mounts = new Set();
 
-  const SUGERENCIAS = ['¿Qué turnos tengo hoy?', '¿Qué informes faltan firmar?', 'Stock de glóbulos rojos', '¿Cómo firmo un informe?', 'Datos de Rocky', '¿Qué vence esta semana?'];
+  /* Preguntas sugeridas según lo que puede ver el rol activo (incluye inventario y RVE). */
+  const SUGERENCIAS = [
+    ['¿Qué turnos tengo hoy?', 'turnos'], ['¿Qué informes faltan firmar?', 'informes'], ['Recetas vigentes', 'recetas'], ['RVE pendientes de integración', 'recetas'],
+    ['¿Cómo emito una RVE?', 'recetas'], ['¿Qué hay que reponer?', 'inventario'], ['¿Qué vence en farmacia?', 'farmacia'], ['Stock de vacuna antirrábica', 'farmacia'],
+    ['Declaraciones SIGTRAZAVET pendientes', 'farmacia'], ['Ventas de hoy', 'ventas'], ['Stock de glóbulos rojos', 'hemocomponentes'], ['Datos de Rocky', 'pacientes'], ['¿Cómo firmo un informe?', 'informes'],
+  ];
+  const sugerencias = () => SUGERENCIAS.filter(([, m]) => Store.puede(m)).slice(0, 8).map(([q]) => q);
 
   const HOWTO = [
     { k: ['firm'], r: 'Para <b>firmar un informe</b>:' + list(['Entrá a <b>Informes</b> y abrí el borrador.', 'Revisá y editá el texto generado por la IA.', 'Tocá <b>Revisar y firmar</b>, indicá si coincidís con la IA o la corregís, y confirmá.']) + 'Tu veredicto queda registrado en Control de calidad.', go: ['#/informes', 'Ir a Informes'] },
@@ -52,7 +80,7 @@
     const b = new Date(a); b.setDate(b.getDate() + dias);
     return S().turnos.filter((x) => ['confirmado', 'pendiente'].includes(x.estado) && new Date(x.fecha) >= a && new Date(x.fecha) < b).sort((x, y) => x.fecha.localeCompare(y.fecha));
   }
-  const turnoLi = (x) => { const p = Store.paciente(x.pacienteId); return '<b>' + fShort(x.fecha) + '</b> · ' + esc(p.nombre) + ' — ' + esc(x.tipo) + (x.estado === 'pendiente' ? ' <i>(pedido del portal, a confirmar)</i>' : ''); };
+  const turnoLi = (x) => { const p = Store.paciente(x.pacienteId); return '<b>' + ref('turno', x.id, fShort(x.fecha)) + '</b> · ' + ref('paciente', p.id, p.nombre) + ' — ' + esc(x.tipo) + (x.estado === 'pendiente' ? ' <i>(pedido del portal, a confirmar)</i>' : ''); };
 
   function responder(q) {
     const t = norm(q);
@@ -62,7 +90,7 @@
 
     // Saludo / ayuda
     if (/^(hola|buen(as|os)|hey|que tal)/.test(t.trim()) && t.trim().split(/\s+/).length <= 3)
-      return '¡Hola, ' + esc(S().usuario.nombre) + '! Soy <b>ARCION</b>. Puedo responder dudas de uso del sistema y encontrar datos de pacientes, turnos, estudios y stock. ¿En qué te ayudo?';
+      return '¡Hola, ' + esc(Store.usuario().nombre) + '! Soy <b>' + NOMBRE + '</b>. Puedo responder dudas de uso del sistema y encontrar datos de pacientes, turnos, estudios y stock. ¿En qué te ayudo?';
     if (has(t, 'que podes', 'que puedes', 'ayuda', 'que sabes', 'como funcionas'))
       return 'Puedo ayudarte con:' + list(['<b>Dudas de uso</b>: cómo firmar un informe, derivar, cargar un estudio, dar un turno…', '<b>Pacientes</b>: “datos de Luna”, “mascotas de Pérez”', '<b>Agenda</b>: “turnos de hoy”, “turnos de mañana”, “turnos de la semana”', '<b>Diagnóstico</b>: “informes sin firmar”, “estudios urgentes”, “derivaciones pendientes”', '<b>Stock</b>: “stock de plasma”, “qué vence esta semana”', '<b>Indicadores</b>: “concordancia de la IA”, “cupo de interconsultas”']);
 
@@ -78,6 +106,40 @@
         list(Object.entries(r.porMedio).sort((a, b) => b[1] - a[1]).map(([m, v]) => Dominio.ventas.MEDIOS[m] + ': ' + pesos(v))) + link('#/ventas', 'Ver ventas');
     }
 
+    // Recetas veterinarias electrónicas (RVE)
+    if (has(t, 'receta', 'rve', 'cuve', 'prescrip', 'botiquin')) {
+      if (has(t, 'como ', 'emit', 'registr', 'cargar', 'botiquin', 'pasos')) {
+        return 'Recetas veterinarias electrónicas (Res. SENASA 654/2026):' + list([
+          '<b>Emitir</b>: el veterinario entra a <b>Recetas (RVE) → Emitir RVE</b>, elige la mascota y los productos y completa dosis, frecuencia, duración y vía. ' + (Store.demo ? 'En modo demostración recibe un número simulado.' : 'Mientras no esté la integración con SIGTRAZAVET, queda <i>pendiente de integración</i> hasta cargar el CUVE.'),
+          '<b>Registrar una RVE externa</b>: desde el punto de venta, con el CUVE que dio SIGTRAZAVET o SIGTrámites.',
+          '<b>Botiquín</b> (art. 20): el veterinario aplica o entrega sin RVE desde <b>Farmacia → Botiquín</b>; queda en la ficha clínica.',
+          'Vigencia: ' + Dominio.ventas.VIGENCIA_RVE + ' días corridos y una sola dispensa.']) + link('#/recetas', 'Ir a Recetas');
+      }
+      if (!Store.puede('recetas')) return sinPermiso('recetas');
+      const hoy = new Date(), V = Dominio.ventas;
+      const est = (r) => (r.estado === 'vigente' && r.tipo !== 'botiquin' && V.diasVigencia(r, hoy) < 0 ? 'vencida' : r.estado);
+      const rs = (S().recetas || []).filter((r) => r.tipo !== 'botiquin');
+      const li = (r) => (r.cuve ? 'CUVE <b>' + esc(r.cuve) + '</b>' : '<i>sin CUVE</i>') + ' · ' + ref('paciente', r.animal.pacienteId, r.animal.nombre) + ' · ' + esc(r.items.map((i) => i.descripcion).join(', ')) + (est(r) === 'vigente' ? ' · ' + V.diasVigencia(r, hoy) + ' días de vigencia' : '');
+      if (has(t, 'pendiente', 'integrac', 'sin cuve')) {
+        const p = rs.filter((r) => r.estado === 'pendiente_integracion');
+        return p.length ? '<b>' + p.length + '</b> RVE pendiente' + (p.length > 1 ? 's' : '') + ' de integración (no habilitan la venta hasta cargar el CUVE):' + list(p.map(li)) + link('#/recetas', 'Cargar CUVE') : 'No hay recetas pendientes de integración. ✅';
+      }
+      const pacR = pacienteEn(t);
+      if (pacR) { const p = rs.filter((r) => r.animal && r.animal.pacienteId === pacR.id); return p.length ? 'Recetas de ' + ref('paciente', pacR.id, pacR.nombre) + ':' + list(p.map((r) => li(r) + ' · ' + esc(est(r)))) + link('#/recetas', 'Ver recetas') : esc(pacR.nombre) + ' no tiene recetas registradas.'; }
+      const vig = rs.filter((r) => est(r) === 'vigente');
+      if (has(t, 'vence', 'vencer', 'vencim')) { const pv = vig.filter((r) => V.diasVigencia(r, hoy) <= 5); return pv.length ? 'Recetas vigentes que vencen en 5 días o menos:' + list(pv.map(li)) + link('#/recetas', 'Ver recetas') : 'Ninguna receta vigente vence en los próximos 5 días.'; }
+      const pend = rs.filter((r) => r.estado === 'pendiente_integracion').length, disp = rs.filter((r) => r.estado === 'dispensada').length;
+      return 'Hay <b>' + vig.length + '</b> receta' + (vig.length === 1 ? '' : 's') + ' vigente' + (vig.length === 1 ? '' : 's') + ' para dispensar, ' + disp + ' dispensada' + (disp === 1 ? '' : 's') + (pend ? ' y <b>' + pend + '</b> pendiente' + (pend > 1 ? 's' : '') + ' de integración' : '') + '.' + (vig.length ? list(vig.map(li)) : '') + link('#/recetas', 'Ver recetas');
+    }
+
+    // Declaraciones de SIGTRAZAVET
+    if (has(t, 'declarac', 'sigtrazavet', 'declarar')) {
+      if (!Store.puede('farmacia')) return sinPermiso('inventario');
+      const d = (S().declaraciones || []).filter((x) => x.estado === 'pendiente');
+      const TIPO = { vencimiento: 'Vencimiento', merma: 'Merma', rotura: 'Rotura', robo: 'Robo o hurto', venta_rve: 'Venta con RVE (tiempo real)', autoconsumo: 'Autoconsumo de botiquín', anulacion: 'Anulación (20 días)' };
+      return d.length ? '<b>' + d.length + '</b> declaración' + (d.length > 1 ? 'es' : '') + ' pendiente' + (d.length > 1 ? 's' : '') + ' en SIGTRAZAVET:' + list(d.map((x) => { const p = Store.producto(x.productoId) || {}; return esc(TIPO[x.tipo] || x.tipo) + ' · ' + ref('producto', p.id, p.nombre || '') + ' · lote ' + esc(x.lote) + ' · ' + x.cantidad + ' u.'; })) + link('#/farmacia', 'Ir a Farmacia') : 'No hay declaraciones pendientes en SIGTRAZAVET. ✅';
+    }
+
     // Inventario (pet shop y farmacia)
     const prodInv = S().productos ? productoEn(t) : null;
     const claveInv = has(t, 'inventario', 'farmacia', 'pet shop', 'petshop', 'producto', 'alimento', 'correa', 'juguete', 'ropa', 'vacunas', 'antiparasit', 'medicamento', 'insumo', 'bajo minimo', 'stock minimo', 'reponer', 'precio');
@@ -86,21 +148,21 @@
       const I = Dominio.inventario, hoy = new Date();
       if (prodInv && !has(t, 'reponer', 'bajo minimo', 'stock minimo')) {
         const e = I.estado(prodInv, S().lotes, hoy);
-        return '<b>' + esc(prodInv.nombre) + '</b> (' + esc(prodInv.presentacion) + '):' + list([
+        return '<b>' + ref('producto', prodInv.id, prodInv.nombre) + '</b> (' + esc(prodInv.presentacion) + '):' + list([
           'Stock vendible: <b>' + e.vendible + '</b> (mínimo ' + prodInv.stockMinimo + ')' + (e.bajoMinimo ? ' · <b>reponer</b>' : '') + (e.vencidos ? ' · ' + e.vencidos + ' vencido' + (e.vencidos > 1 ? 's' : '') : ''),
           'Precio: ' + pesos(prodInv.precio) + ' (IVA incluido)',
-        ].concat(prodInv.catalogo === 'farmacia' ? ['Próximo vencimiento: ' + (e.proximoVence ? fDate(e.proximoVence) + ' (' + e.diasProximo + ' días)' : '—'), prodInv.requiereReceta ? 'Venta bajo receta veterinaria electrónica' : 'Venta libre'] : [])) + link('#/inventario', 'Ver inventario');
+        ].concat(prodInv.catalogo === 'farmacia' ? ['Próximo vencimiento: ' + (e.proximoVence ? fDate(e.proximoVence) + ' (' + e.diasProximo + ' días)' : '—'), prodInv.requiereReceta ? 'Venta bajo receta veterinaria electrónica' : 'Venta libre'] : [])) + link('#/' + prodInv.catalogo, 'Ver ' + (prodInv.catalogo === 'farmacia' ? 'farmacia' : 'pet shop'));
       }
       const cats = Store.catalogosVisibles();
       if (has(t, 'vence', 'vencim', 'vencid')) {
         const v = I.vencimientos(S().productos.filter((p) => cats.includes(p.catalogo)), S().lotes, hoy);
-        const fila = (l) => { const p = Store.producto(l.productoId); return esc(p.nombre) + ' · lote ' + esc(l.lote) + ' · ' + fDate(l.vence) + ' · ' + l.cantidad + ' u.'; };
+        const fila = (l) => { const p = Store.producto(l.productoId); return ref('producto', p.id, p.nombre) + ' · lote ' + esc(l.lote) + ' · ' + fDate(l.vence) + ' · ' + l.cantidad + ' u.'; };
         if (!v.vencidos.length && !v.porVencer.length) return 'No hay lotes de farmacia vencidos ni por vencer en los próximos 30 días. ✅';
         return (v.vencidos.length ? '<b>Vencidos (no se pueden vender):</b>' + list(v.vencidos.map(fila)) : '') + (v.porVencer.length ? '<b>Vencen en los próximos 30 días:</b>' + list(v.porVencer.map(fila)) : '') + link('#/inventario', 'Ver inventario');
       }
       const bajo = Store.inventarioAlertas().bajoMinimo;
       if (has(t, 'reponer', 'bajo minimo', 'stock minimo', 'falta', 'faltan')) {
-        return bajo.length ? 'Hay <b>' + bajo.length + '</b> producto' + (bajo.length > 1 ? 's' : '') + ' en el stock mínimo o por debajo:' + list(bajo.map((p) => esc(p.nombre) + ' · ' + I.estado(p, S().lotes, hoy).vendible + ' u. (mín ' + p.stockMinimo + ')')) + link('#/inventario', 'Ver inventario') : 'Ningún producto está bajo el stock mínimo. ✅';
+        return bajo.length ? 'Hay <b>' + bajo.length + '</b> producto' + (bajo.length > 1 ? 's' : '') + ' en el stock mínimo o por debajo:' + list(bajo.map((p) => ref('producto', p.id, p.nombre) + ' · ' + I.estado(p, S().lotes, hoy).vendible + ' u. (mín ' + p.stockMinimo + ')')) + link('#/inventario', 'Ver inventario') : 'Ningún producto está bajo el stock mínimo. ✅';
       }
       const prods = S().productos.filter((p) => p.activo !== false && cats.includes(p.catalogo));
       return 'El inventario tiene <b>' + prods.length + '</b> productos activos' + (bajo.length ? ', <b>' + bajo.length + '</b> en el stock mínimo o por debajo' : '') + '. Preguntame por un producto (por ejemplo, “stock de amoxicilina”), qué hay que reponer o qué vence en farmacia.' + link('#/inventario', 'Ver inventario');
@@ -112,7 +174,7 @@
       if (has(t, 'vence', 'vencim', 'por vencer')) {
         const al = Store.hemoAlertas();
         if (!al.length) return 'No hay unidades que venzan en los próximos 7 días. ✅';
-        return 'Estas unidades vencen en los próximos 7 días:' + list(al.map((u) => '<b>' + esc(u.id) + '</b> · ' + esc(u.comp) + ' ' + esc(u.especie) + ' ' + esc(u.grupo) + ' — vence ' + fDate(u.vence) + ' (' + esc(u.ubicacion) + ')')) + link('#/hemocomponentes', 'Ver consolidado');
+        return 'Estas unidades vencen en los próximos 7 días:' + list(al.map((u) => '<b>' + ref('unidad', u.id, u.id) + '</b> · ' + esc(u.comp) + ' ' + esc(u.especie) + ' ' + esc(u.grupo) + ' — vence ' + fDate(u.vence) + ' (' + esc(u.ubicacion) + ')')) + link('#/hemocomponentes', 'Ver consolidado');
       }
       let filtro = activas, nombre = 'hemocomponentes';
       const comp = [['globulos', 'Glóbulos rojos'], ['plasma', 'Plasma fresco congelado'], ['sangre entera', 'Sangre entera'], ['plaqueta', 'Plaquetas']].find(([k]) => t.includes(k));
@@ -123,7 +185,7 @@
       const aca = disp.filter((u) => u.ubicacion === 'Esta clínica');
       if (!filtro.length) return 'No hay stock de ' + nombre + ' en este momento.' + link('#/hemocomponentes', 'Ver consolidado');
       return 'Stock de <b>' + nombre + '</b>: <b>' + disp.length + '</b> disponible' + (disp.length === 1 ? '' : 's') + ' en la red, <b>' + aca.length + '</b> en esta clínica.' +
-        list(filtro.map((u) => '<b>' + esc(u.id) + '</b> · ' + esc(u.comp) + ' ' + esc(u.especie) + ' ' + esc(u.grupo) + ' · ' + u.volumen + ' ml · ' + (u.estado === 'reservada' ? '<i>reservada</i>' : 'disponible') + ' · ' + esc(u.ubicacion))) + link('#/hemocomponentes', 'Ver consolidado');
+        list(filtro.map((u) => '<b>' + ref('unidad', u.id, u.id) + '</b> · ' + esc(u.comp) + ' ' + esc(u.especie) + ' ' + esc(u.grupo) + ' · ' + u.volumen + ' ml · ' + (u.estado === 'reservada' ? '<i>reservada</i>' : 'disponible') + ' · ' + esc(u.ubicacion))) + link('#/hemocomponentes', 'Ver consolidado');
     }
 
     // Cómo hacer...
@@ -177,24 +239,28 @@
       return 'La concordancia IA–veterinario es de <b>' + st.pct + '%</b> sobre ' + st.total + ' estudios evaluados, con ' + st.discrepancias + ' discrepancia' + (st.discrepancias === 1 ? '' : 's') + '.' + (st.muestraChica ? ' Ojo: con menos de ' + Dominio.calidad.N_MINIMO + ' evaluaciones el porcentaje es orientativo.' : '') + link('#/calidad', 'Ver control de calidad');
     }
 
-    // Paciente puntual
+    // Paciente puntual: cada dato según los permisos del rol
     const pac = pacienteEn(t);
     if (pac) {
+      if (!Store.puede('pacientes')) return sinPermiso('pacientes');
       const tu = Store.tutor(pac.tutorId) || {};
-      const est = S().estudios.filter((e) => e.pacienteId === pac.id).sort((a, b) => b.fecha.localeCompare(a.fecha));
+      const est = S().estudios.filter((e) => e.pacienteId === pac.id && e.activo !== false).sort((a, b) => b.fecha.localeCompare(a.fecha));
       const prox = S().turnos.filter((x) => x.pacienteId === pac.id && new Date(x.fecha) >= new Date() && x.estado === 'confirmado').sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
       const ult = est[0];
-      return '<b>' + esc(pac.nombre) + '</b> · ' + esc(pac.especie) + ' ' + esc(pac.raza) + ', ' + Store.edad(pac.nacimiento) + (pac.peso ? ', ' + pac.peso + ' kg' : '') + '.' +
-        list(['Tutor: ' + esc(tu.nombre + ' ' + tu.apellido) + ' · ' + esc(tu.tel || 's/teléfono'),
-          'Estudios: ' + est.length + (ult ? ' · último ' + fDate(ult.fecha) + ' (' + esc(ult.tipo) + ', ' + (ult.resultado ? Store.RES_LABEL[ult.resultado] : 'sin análisis') + ')' : ''),
-          'Próximo turno: ' + (prox ? fShort(prox.fecha) + ' · ' + esc(prox.tipo) : 'sin turnos')]) +
-        (ult ? link('#/estudios/' + ult.id, 'Ver último estudio') : '');
+      const datos = [];
+      if (Store.puede('tutores')) datos.push('Tutor: ' + ref('tutor', tu.id, tu.nombre + ' ' + tu.apellido) + ' · ' + esc(tu.tel || 's/teléfono'));
+      if (Store.puede('imagenes')) datos.push('Estudios: ' + est.length + (ult ? ' · último ' + ref('estudio', ult.id, fDate(ult.fecha)) + ' (' + esc(ult.tipo) + ', ' + (ult.resultado ? Store.RES_LABEL[ult.resultado] : 'sin análisis') + ')' : ''));
+      if (Store.puede('turnos')) datos.push('Próximo turno: ' + (prox ? ref('turno', prox.id, fShort(prox.fecha)) + ' · ' + esc(prox.tipo) : 'sin turnos'));
+      const cal = (S().calendarioSalud || []).filter((c) => c.pacienteId === pac.id && c.estado === 'pendiente').sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+      if (cal && (Store.puede('turnos') || Store.puede('farmacia'))) datos.push('Próximo en su calendario de salud: ' + esc(cal.nombre) + ' · ' + fDate(cal.fecha + 'T12:00:00'));
+      return '<b>' + ref('paciente', pac.id, pac.nombre) + '</b> · ' + esc(pac.especie) + ' ' + esc(pac.raza) + ', ' + Store.edad(pac.nacimiento) + (pac.peso ? ', ' + pac.peso + ' kg' : '') + '.' + (datos.length ? list(datos) : '') +
+        (ult && Store.puede('imagenes') ? link('#/estudios/' + ult.id, 'Ver último estudio') : '');
     }
 
     // Mascotas de un tutor
     if (has(t, 'tutor', 'dueno', 'mascotas de', 'pacientes de')) { if (!Store.puede('tutores')) return sinPermiso('tutores');
       const tu = tutorEn(t);
-      if (tu) { const ps = S().pacientes.filter((p) => p.tutorId === tu.id); return '<b>' + esc(tu.nombre + ' ' + tu.apellido) + '</b> (DNI ' + esc(tu.doc) + ', ' + esc(tu.tel) + ') tiene ' + ps.length + ' mascota' + (ps.length === 1 ? '' : 's') + ':' + list(ps.map((p) => esc(p.nombre) + ' · ' + esc(p.especie) + ' ' + esc(p.raza))); }
+      if (tu) { const ps = S().pacientes.filter((p) => p.tutorId === tu.id); return '<b>' + esc(tu.nombre + ' ' + tu.apellido) + '</b> (DNI ' + esc(tu.doc) + ', ' + esc(tu.tel) + ') tiene ' + ps.length + ' mascota' + (ps.length === 1 ? '' : 's') + ':' + list(ps.map((p) => ref('paciente', p.id, p.nombre) + ' · ' + esc(p.especie) + ' ' + esc(p.raza))); }
     }
     if (has(t, 'cuantos pacientes', 'pacientes tengo', 'cantidad de pacientes')) { if (!Store.puede('pacientes')) return sinPermiso('pacientes');
       const ps = S().pacientes; return 'La clínica tiene <b>' + ps.length + '</b> pacientes (' + ps.filter((p) => p.origen === 'red').length + ' incorporados desde la red EISPLUS).' + link('#/pacientes', 'Ver pacientes');
@@ -204,64 +270,95 @@
     const h = HOWTO.find((x) => x.r && x.k.some((k) => t.includes(k)));
     if (h) return h.r + link(h.go[0], h.go[1]);
 
-    return 'No estoy seguro de haber entendido. Probá con algo como: ' + list(['“¿Qué turnos tengo mañana?”', '“Datos de Michi”', '“¿Cómo derivo un estudio?”', '“Stock de plasma felino”']);
+    return 'No estoy seguro de haber entendido. Probá con algo como: ' + list(sugerencias().slice(0, 4).map((q) => '“' + esc(q) + '”'));
   }
 
   /* ---------- Render ---------- */
+  const bienvenida = () => ({ who: 'bot', html: '¡Hola! Soy <b>' + NOMBRE + '</b>, el asistente de la clínica. Preguntame cómo usar el sistema o pedime datos de lo que tu rol puede ver: pacientes, turnos, stock, recetas.' });
   function msgHtml(m) { return '<div class="amsg ' + m.who + (m.typing ? ' typing' : '') + '">' + m.html + '</div>'; }
+  let escribiendo = null;
   function paintAll() {
+    const c = actual();
+    const msgs = [bienvenida()].concat(c.mensajes, escribiendo ? [escribiendo] : []);
+    const sug = sugerencias();
     mounts.forEach((root) => {
       if (!document.body.contains(root)) { mounts.delete(root); return; }
       const body = root.querySelector('.arcion-body');
-      body.innerHTML = history.map(msgHtml).join('');
+      body.innerHTML = msgs.map(msgHtml).join('');
       body.scrollTop = body.scrollHeight;
-      body.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { if (root.id === 'arcion-drawer' && window.innerWidth < 860) close(); }));
+      root.querySelector('.arcion-sugs').innerHTML = sug.map((s) => '<button type="button">' + esc(s) + '</button>').join('');
     });
+    const lista = document.getElementById('arcion-historial'); if (lista) lista.innerHTML = historialHtml();
+  }
+  /* Guarda el mensaje en la conversación; la primera pregunta le da el título. */
+  function registrar(m) {
+    const c = actual();
+    if (!c.id) { c.id = Store.uid('cv'); c.inicio = new Date().toISOString(); c.titulo = m.texto.slice(0, 60); }
+    c.mensajes.push({ who: m.who, html: m.html, fecha: new Date().toISOString() });
+    Store.A.guardarConversacion(c);
   }
   function ask(q) {
     if (!q.trim()) return;
-    history.push({ who: 'user', html: esc(q) });
-    const typing = { who: 'bot', html: 'ARCION está escribiendo…', typing: true };
-    history.push(typing); paintAll();
+    registrar({ who: 'user', html: esc(q), texto: q });
+    escribiendo = { who: 'bot', html: NOMBRE + ' está escribiendo…', typing: true }; paintAll();
     setTimeout(() => {
       let r; try { r = responder(q); } catch (e) { r = 'Tuve un problema al buscar esa información. Probá de nuevo.'; }
-      history.splice(history.indexOf(typing), 1, { who: 'bot', html: r }); paintAll();
+      escribiendo = null; registrar({ who: 'bot', html: r, texto: q }); paintAll();
     }, 550 + Math.random() * 400);
   }
+  function nuevaConversacion() { conv = nueva(); paintAll(); }
+  function abrirConversacion(id) { const c = (Store.s.arcionConversaciones || []).find((x) => x.id === id && x.usuarioId === Store.usuario().id); if (c) { conv = JSON.parse(JSON.stringify(c)); paintAll(); } }
+  /* Historial: solo las conversaciones del usuario activo. */
+  function historialHtml() {
+    const mias = (Store.s.arcionConversaciones || []).filter((c) => c.usuarioId === Store.usuario().id).slice().sort((a, b) => b.inicio.localeCompare(a.inicio));
+    return mias.length ? mias.map((c) => '<button class="conv' + (conv && conv.id === c.id ? ' on' : '') + '" data-conv="' + c.id + '"><span class="t">' + esc(c.titulo) + '</span><span class="s">' + fShort(c.inicio) + ' · ' + c.mensajes.filter((m) => m.who === 'user').length + ' pregunta' + (c.mensajes.filter((m) => m.who === 'user').length === 1 ? '' : 's') + '</span></button>').join('') : '<p class="small muted">Todavía no hay conversaciones.</p>';
+  }
   function chatShell() {
-    return '<div class="arcion-body"></div>' +
-      '<div class="arcion-sugs">' + SUGERENCIAS.map((s) => '<button>' + esc(s) + '</button>').join('') + '</div>' +
-      '<form class="arcion-form"><input placeholder="Preguntale a ARCION…" aria-label="Mensaje para ARCION"><button aria-label="Enviar">' + icon('send') + '</button></form>';
+    return '<div class="arcion-body"></div><div class="arcion-sugs"></div>' +
+      '<form class="arcion-form"><input placeholder="Preguntale a ' + NOMBRE + '…" aria-label="Mensaje para ' + NOMBRE + '"><button aria-label="Enviar">' + icon('send') + '</button></form>';
   }
   function wire(root) {
     const inp = root.querySelector('.arcion-form input');
     root.querySelector('.arcion-form').addEventListener('submit', (e) => { e.preventDefault(); ask(inp.value); inp.value = ''; });
-    root.querySelectorAll('.arcion-sugs button').forEach((b) => b.addEventListener('click', () => ask(b.textContent)));
+    root.querySelector('.arcion-sugs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) ask(b.textContent); });
+    root.querySelector('.arcion-body').addEventListener('click', (e) => {
+      const a = e.target.closest('a'); if (!a) return;
+      if (a.dataset.ref) { e.preventDefault(); const [tipo, id] = a.dataset.ref.split(':'); abrirRef(tipo, id); }
+      if (root.id === 'arcion-drawer' && window.innerWidth < 860) close();
+    });
     mounts.add(root); paintAll();
     return inp;
   }
-  if (!history.length) history.push({ who: 'bot', html: '¡Hola! Soy <b>ARCION</b>, el asistente inteligente de EISPLUS aplicado a la veterinaria. Preguntame cómo usar el sistema o pedime datos de pacientes, turnos y stock.' });
+  // si cambia el usuario activo, el chat pasa a su propia conversación
+  let usuarioVisto = null;
+  Store.on(() => { const u = Store.usuario().id; if (u !== usuarioVisto) { usuarioVisto = u; if (conv && conv.usuarioId !== u) conv = null; setTimeout(paintAll, 0); } });
 
   /* Drawer flotante */
   const drawer = document.getElementById('arcion-drawer');
-  drawer.innerHTML = '<div class="arcion-head"><div class="ai">' + icon('spark') + '</div><div class="grow"><strong>ARCION</strong><span>Asistente inteligente · siempre disponible</span></div><a class="icon-btn" href="#/arcion" title="Abrir en pantalla completa">' + icon('arrowUp') + '</a><button class="icon-btn" id="arcion-close" aria-label="Cerrar">' + icon('x') + '</button></div>' + chatShell();
+  drawer.innerHTML = '<div class="arcion-head"><div class="ai">' + icon('spark') + '</div><div class="grow"><strong>' + NOMBRE + '</strong><span>Asistente de la clínica · ve lo que tu rol puede ver</span></div><button class="icon-btn" id="arcion-nueva" title="Nueva conversación">' + icon('plus') + '</button><a class="icon-btn" href="#/arcion" title="Abrir en pantalla completa">' + icon('arrowUp') + '</a><button class="icon-btn" id="arcion-close" aria-label="Cerrar">' + icon('x') + '</button></div>' + chatShell();
   const drawerInput = wire(drawer);
   function open() { drawer.hidden = false; paintAll(); setTimeout(() => drawerInput.focus(), 30); }
   function close() { drawer.hidden = true; }
   document.getElementById('arcion-fab').addEventListener('click', () => (drawer.hidden ? open() : close()));
   drawer.querySelector('#arcion-close').addEventListener('click', close);
+  drawer.querySelector('#arcion-nueva').addEventListener('click', nuevaConversacion);
   drawer.querySelector('a[href="#/arcion"]').addEventListener('click', close);
 
-  /* Vista de página completa */
+  /* Vista de página completa, con el historial de conversaciones del usuario */
   function view() {
-    const html = '<div class="page-head"><div class="page-icon" style="background:#E0F2F1;color:#17796F">' + icon('spark') + '</div><div class="page-title"><h1>ARCION, aplicado a la veterinaria</h1><p>La experiencia del asistente inteligente de EISPLUS, ahora al servicio de la clínica.</p></div></div>' +
+    const html = '<div class="page-head"><div class="page-icon" style="background:#E0F2F1;color:#17796F">' + icon('spark') + '</div><div class="page-title"><h1>' + NOMBRE + '</h1><p>Asistente de la clínica: dudas de uso y datos de pacientes, turnos, stock y recetas, según los permisos de tu rol.</p></div></div>' +
       '<div class="arcion-page"><div class="card chat-card" id="arcion-page-chat">' + chatShell() + '</div>' +
-      '<div><div class="card card-pad" style="margin-bottom:16px"><div class="list-row" style="padding:0 0 14px"><div class="att-ic green">' + icon('chat') + '</div><div class="grow"><div class="t">Consultas del día a día</div><div class="s">Responde dudas de uso del sistema a recepción y veterinarios.</div></div></div>' +
-      '<div class="list-row" style="padding:14px 0"><div class="att-ic green">' + icon('search') + '</div><div class="grow"><div class="t">Acceso rápido a la información</div><div class="s">Encuentra datos de pacientes, turnos y stock con una pregunta.</div></div></div>' +
-      '<div class="list-row" style="padding:14px 0 0"><div class="att-ic green">' + icon('clock') + '</div><div class="grow"><div class="t">Siempre disponible</div><div class="s">Atiende consultas en cualquier momento, sin esperar al soporte.</div></div></div></div>' +
-      '<div class="callout green">' + icon('info') + '<span>También podés abrir ARCION desde cualquier pantalla con el botón flotante.</span></div></div></div>';
-    return { html, mount(root) { const inp = wire(root.querySelector('#arcion-page-chat')); inp.focus(); } };
+      '<div><div class="card card-pad" style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><b class="grow">Conversaciones</b><button class="btn sm" id="arcion-nueva-pag">' + icon('plus') + 'Nueva</button></div><div id="arcion-historial" class="conv-list"></div></div>' +
+      '<div class="callout green">' + icon('info') + '<span>Los registros que cita ' + NOMBRE + ' son enlaces: tocá un paciente, turno o producto para abrirlo. También podés abrirlo desde cualquier pantalla con el botón flotante.</span></div></div></div>';
+    return {
+      html, mount(root) {
+        const inp = wire(root.querySelector('#arcion-page-chat'));
+        root.querySelector('#arcion-nueva-pag').onclick = nuevaConversacion;
+        root.querySelector('#arcion-historial').addEventListener('click', (e) => { const b = e.target.closest('[data-conv]'); if (b) abrirConversacion(b.dataset.conv); });
+        paintAll(); inp.focus();
+      },
+    };
   }
 
-  window.Arcion = { view, ask, open, responder };
+  window.Arcion = { view, ask, open, responder, nuevaConversacion, abrirConversacion };
 })();

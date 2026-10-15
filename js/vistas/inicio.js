@@ -62,7 +62,7 @@
       '<div class="card-pad" style="padding-top:8px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span class="strong">' + esc(pk.nombre) + '</span><span class="muted">' + pk.usadas + ' / ' + pk.total + ' · quedan ' + (pk.total - pk.usadas) + '</span></div>' +
       '<div class="progress violet"><div style="width:' + (pk.usadas / pk.total * 100) + '%"></div></div>' +
       '<p class="small muted" style="margin:12px 0 0">Consultá casos dudosos con el equipo central de la red. El cupo se renueva el 1° de cada mes.</p>' +
-      '<button class="btn sm" style="margin-top:14px" data-go="#/arcion">' + icon('spark') + 'Preguntale a ARCION</button></div></div>' : '') +
+      '<button class="btn sm" style="margin-top:14px" data-go="#/arcion">' + icon('spark') + 'Preguntale a ARCION Pet</button></div></div>' : '') +
       ((P('imagenes') || P('interconsultas')) ? '</div>' : '');
     return { html, mount(root) { on(root, '[data-go]', 'click', (el) => go(el.dataset.go)); } };
   }

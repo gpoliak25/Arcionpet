@@ -33,6 +33,8 @@
     return M.migrar(clone(SEED));
   }
   let guardadoOk = true; // false si el navegador no tuvo espacio para guardar
+  /* Guarda sin redibujar la pantalla (para el chat, que se actualiza solo). */
+  function guardarSilencioso() { if (!soloLectura) guardadoOk = lsSet(KEY, JSON.stringify(S)); }
   function save() {
     if (!soloLectura) guardadoOk = lsSet(KEY, JSON.stringify(S));
     listeners.forEach((fn) => fn());
@@ -375,6 +377,14 @@
       let t = TU().reprogramar(S.turnos[i], fecha, ctxTurnos(), (opciones && opciones.portal) ? 'tutor' : S.usuarioActivo);
       if (opciones && opciones.portal) t = Object.assign(t, { estado: 'pendiente', origen: 'portal' });
       S.turnos[i] = t; save(); return t;
+    },
+    /* ARCION Pet: guarda la conversación del usuario (se conservan sus 50 más recientes). */
+    guardarConversacion(c) {
+      const copia = JSON.parse(JSON.stringify(c));
+      const otras = (S.arcionConversaciones || []).filter((x) => x.id !== c.id);
+      const mias = otras.filter((x) => x.usuarioId === c.usuarioId).sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, 49).map((x) => x.id);
+      S.arcionConversaciones = otras.filter((x) => x.usuarioId !== c.usuarioId || mias.includes(x.id)).concat([copia]);
+      guardarSilencioso();
     },
     /* ---------- Peluquería ---------- */
     addPelTurno(datos) {
