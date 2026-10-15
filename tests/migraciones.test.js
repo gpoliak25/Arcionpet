@@ -66,3 +66,17 @@ test('rechaza versiones fuera de rango', () => {
   assert.throws(() => M.migrar({ version: M.VERSION_ACTUAL + 1 }));
   assert.throws(() => M.revertir({ version: M.VERSION_ACTUAL }, M.VERSION_BASE - 1));
 });
+
+test('v15: productos con costo, proveedor y EAN-13 interno válido; colecciones de facturación y caja; vuelve exacta', () => {
+  const Inv = require('../js/dominio/inventario.js');
+  const v14 = M.migrar(SEED, 14);
+  const v15 = M.migrar(v14, 15);
+  assert.ok(v15.productos.every((p) => p.costo > 0 && p.proveedor && Inv.ean13Valido(p.codigoBarras) && p.codigoBarras.startsWith('200')));
+  assert.equal(new Set(v15.productos.map((p) => p.codigoBarras)).size, v15.productos.length, 'códigos únicos');
+  assert.ok(v15.productos.filter((p) => p.intervaloDias).every((p) => p.catalogo === 'farmacia'));
+  assert.ok(v15.tutores.every((t) => t.condicionIva === 'Consumidor final'));
+  assert.deepEqual([v15.comprobantes, v15.cajas, v15.fichaClinica, v15.calendarioSalud], [[], [], [], []]);
+  assert.equal(v15.config.facturacion.modo, 'homologacion');
+  assert.ok(v15.productos.every((p) => Inv.validarProducto(p, v15.productos).length === 0), 'los productos migrados son válidos');
+  assert.deepEqual(M.revertir(v15, 14), v14);
+});

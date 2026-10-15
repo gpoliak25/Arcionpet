@@ -206,6 +206,33 @@
         return s;
       },
     },
+    {
+      de: 14, a: 15, descripcion: 'Inventario y ventas: costo, proveedor, código de barras e intervalo; facturación, caja, botiquín y calendario de salud',
+      up(s) {
+        const PROV = { petshop: 'Distribuidora Mascotas Sur (ejemplo)', farmacia: 'Droguería Veterinaria Norte (ejemplo)' };
+        const INTERVALO = { 'fa-anti-01': 90, 'fa-anti-02': 30, 'fa-anti-03': 90, 'fa-vac-01': 365, 'fa-vac-02': 365, 'fa-vac-03': 365 };
+        const ean = (doce) => { let t = 0; for (let i = 0; i < 12; i++) t += +doce[i] * (i % 2 ? 3 : 1); return doce + ((10 - (t % 10)) % 10); };
+        s.productos = (s.productos || []).map((p, i) => Object.assign({
+          costo: Math.round(p.precio / 1.21 * 0.62), proveedor: PROV[p.catalogo] || '',
+          codigoBarras: ean('2000' + String(i + 1).padStart(8, '0')), // rango de uso interno (200-299): no son códigos reales
+          intervaloDias: INTERVALO[p.id] || null,
+        }, p));
+        s.tutores = s.tutores.map((t) => Object.assign({ condicionIva: 'Consumidor final' }, t));
+        s.recetas = (s.recetas || []).map((r) => Object.assign({ origen: r.tipo === 'botiquin' ? 'botiquin' : 'registrada' }, r));
+        s.config = Object.assign({}, s.config, { facturacion: { proveedor: '', modo: 'homologacion', puntosVenta: [{ numero: 1, nombre: 'Mostrador' }, { numero: 2, nombre: 'Peluquería' }], puntoVenta: 1 } });
+        s.comprobantes = []; s.cajas = []; s.fichaClinica = []; s.calendarioSalud = [];
+        return s;
+      },
+      down(s) {
+        s.productos = (s.productos || []).map((p) => { const c = Object.assign({}, p); ['costo', 'proveedor', 'codigoBarras', 'intervaloDias'].forEach((k) => delete c[k]); return c; });
+        s.tutores = s.tutores.map((t) => { const c = Object.assign({}, t); delete c.condicionIva; return c; });
+        s.recetas = (s.recetas || []).filter((r) => r.origen !== 'emitida').map((r) => { const c = Object.assign({}, r); delete c.origen; return c; });
+        s.ventas = (s.ventas || []).map((v) => { const c = Object.assign({}, v); ['comprobanteId', 'devoluciones', 'cliente', 'puntoVenta'].forEach((k) => delete c[k]); if (c.estado === 'devuelta') c.estado = 'anulada'; if (c.estado === 'devolucion_parcial') c.estado = 'confirmada'; return c; });
+        delete s.config.facturacion;
+        ['comprobantes', 'cajas', 'fichaClinica', 'calendarioSalud'].forEach((k) => delete s[k]);
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

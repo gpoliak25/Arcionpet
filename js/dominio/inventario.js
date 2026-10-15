@@ -63,7 +63,7 @@
   }
 
   /* Ingreso de mercadería. Si ya existe el mismo lote con el mismo vencimiento, se suma a ese lote. */
-  function ingresar(inv, { productoId, lote, vence, cantidad, nota }, ctx) {
+  function ingresar(inv, { productoId, lote, vence, cantidad, nota, costoUnitario, proveedor }, ctx) {
     const s = clonar(inv);
     const p = s.productos.find((x) => x.id === productoId);
     if (!p) throw new ErrorStock('Producto inexistente');
@@ -73,10 +73,13 @@
       if (!vence) throw new ErrorStock('En farmacia el vencimiento es obligatorio');
     }
     if (vence && diasHasta(vence, ctx.fecha) < 0) throw new ErrorStock('No se puede ingresar mercadería vencida');
+    if (costoUnitario != null && !(typeof costoUnitario === 'number' && costoUnitario >= 0)) throw new ErrorStock('El costo unitario debe ser un número mayor o igual a cero');
+    if (costoUnitario != null) p.costo = costoUnitario; // último costo de compra
+    if (proveedor) p.proveedor = proveedor;
     let l = s.lotes.find((x) => x.productoId === productoId && (x.lote || '') === (lote || '') && (x.vence || '') === (vence || ''));
     if (l) l.cantidad += cantidad;
     else { l = { id: ctx.id('lt'), productoId, lote: lote || '', vence: vence || null, cantidad, ingreso: ctx.fecha }; s.lotes.push(l); }
-    s.movimientos.push({ id: ctx.id('mv'), productoId, loteId: l.id, tipo: 'ingreso', cantidad, fecha: ctx.fecha, usuario: ctx.usuario, nota: nota || '' });
+    s.movimientos.push({ id: ctx.id('mv'), productoId, loteId: l.id, tipo: 'ingreso', cantidad, fecha: ctx.fecha, usuario: ctx.usuario, nota: nota || '', costoUnitario: costoUnitario == null ? null : costoUnitario, proveedor: proveedor || '' });
     return { inv: s, lote: l };
   }
 
@@ -163,6 +166,20 @@
     return { inv: s };
   }
 
+  /* Margen sobre el precio neto de IVA (21 %). null si no hay costo cargado. */
+  function margen(p) {
+    if (!(p.costo > 0)) return null;
+    const neto = p.precio / 1.21;
+    return { neto: Math.round(neto), costo: p.costo, ganancia: Math.round(neto - p.costo), pct: Math.round((neto - p.costo) / neto * 1000) / 10 };
+  }
+  /* EAN-13: 13 dígitos con dígito verificador. */
+  function digitoEAN(doce) { let s = 0; for (let i = 0; i < 12; i++) s += +doce[i] * (i % 2 ? 3 : 1); return (10 - (s % 10)) % 10; }
+  const ean13Valido = (c) => /^\d{13}$/.test(String(c || '')) && digitoEAN(String(c)) === +String(c)[12];
+  const ean13 = (doce) => String(doce) + digitoEAN(String(doce));
+  const porCodigo = (productos, codigo) => productos.find((p) => p.activo !== false && ((p.codigoBarras && p.codigoBarras === String(codigo).trim()) || (p.sku && p.sku.toLowerCase() === String(codigo).trim().toLowerCase()))) || null;
+  /* Cantidad sugerida para reponer: hasta el doble del stock mínimo. */
+  const sugerenciaReposicion = (p, e) => (e.bajoMinimo ? Math.max(p.stockMinimo * 2 - e.vendible, 1) : 0);
+
   /* Valor del stock vendible a precio de venta (IVA incluido). */
   const valorStock = (productos, lotes, hoy) => productos.reduce((t, p) => t + estado(p, lotes, hoy).vendible * (p.precio || 0), 0);
 
@@ -175,11 +192,16 @@
     if (!(Number.isInteger(p.stockMinimo) && p.stockMinimo >= 0)) e.push('El stock mínimo debe ser un entero mayor o igual a cero');
     if (p.sku && (todos || []).some((o) => o.id !== p.id && o.sku && o.sku.toLowerCase() === p.sku.toLowerCase())) e.push('Ya existe un producto con ese código');
     if (p.catalogo !== 'farmacia' && (p.requiereReceta || p.sigtrazavet)) e.push('Solo los productos de farmacia pueden requerir receta o estar alcanzados por SIGTRAZAVET');
+    if (p.costo != null && !(typeof p.costo === 'number' && p.costo >= 0)) e.push('El costo debe ser un número mayor o igual a cero');
+    if (p.codigoBarras && !ean13Valido(p.codigoBarras)) e.push('El código de barras no es un EAN-13 válido');
+    if (p.codigoBarras && (todos || []).some((o) => o.id !== p.id && o.codigoBarras === p.codigoBarras)) e.push('Ya existe un producto con ese código de barras');
+    if (p.intervaloDias != null && p.intervaloDias !== '' && !(Number.isInteger(p.intervaloDias) && p.intervaloDias >= 1 && p.intervaloDias <= 1095)) e.push('El intervalo de repetición debe ser de 1 a 1095 días');
+    if (p.catalogo !== 'farmacia' && p.intervaloDias) e.push('El intervalo de repetición es solo para productos de farmacia');
     return e;
   }
 
   return {
     CATALOGOS, CATEGORIAS, DIAS_AVISO_FARMACIA, DIAS_DECLARACION, MOTIVOS_AJUSTE, ErrorStock,
-    diasHasta, estado, vencimientos, ingresar, ajustar, bajaVencido, planDescuento, descontar, reponer, valorStock, validarProducto,
+    diasHasta, estado, vencimientos, ingresar, margen, ean13Valido, ean13, porCodigo, sugerenciaReposicion, ajustar, bajaVencido, planDescuento, descontar, reponer, valorStock, validarProducto,
   };
 });

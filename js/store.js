@@ -201,6 +201,27 @@
 
   /* ---------- Ventas ---------- */
   const CLAVES_VENTA = ['productos', 'lotes', 'movimientos', 'declaraciones', 'ventas', 'recetas'];
+  const facturacionCfg = () => (S.config || {}).facturacion || { puntosVenta: [{ numero: 1, nombre: 'Mostrador' }], puntoVenta: 1 };
+  /* Cliente de la factura: el tutor (con su condición frente al IVA) o un consumidor final. */
+  function clienteFactura(venta) {
+    const t = venta.tutorId ? tutor(venta.tutorId) : null;
+    if (t) return { nombre: t.nombre + ' ' + t.apellido, condicionIva: t.condicionIva || 'Consumidor final', cuit: t.cuit || (t.tipoDoc === 'CUIT' ? t.doc : ''), doc: t.doc };
+    const c = venta.cliente || {};
+    return { nombre: c.nombre || 'Consumidor final', condicionIva: c.condicionIva || 'Consumidor final', cuit: c.cuit || '', doc: c.doc || '' };
+  }
+  /* Próximas dosis: productos con intervalo de repetición vendidos o aplicados a una mascota (alimenta los recordatorios). */
+  function agendarDosis(pacienteId, items, origen, fecha) {
+    if (!pacienteId) return;
+    S.calendarioSalud = S.calendarioSalud || [];
+    items.forEach((it) => {
+      const p = producto(it.productoId);
+      if (!p || !p.intervaloDias) return;
+      const d = new Date(fecha); d.setDate(d.getDate() + p.intervaloDias);
+      // una aplicación nueva reemplaza la próxima dosis pendiente del mismo producto
+      S.calendarioSalud.filter((c) => c.pacienteId === pacienteId && c.productoId === p.id && c.estado === 'pendiente').forEach((c) => { c.estado = 'reemplazada'; });
+      S.calendarioSalud.push({ id: uid('cs'), pacienteId, productoId: p.id, nombre: p.nombre, categoria: p.categoria, fecha: d.toISOString().slice(0, 10), origen, estado: 'pendiente', creado: fecha });
+    });
+  }
   const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
   function aplicarVentas(e) { CLAVES_VENTA.forEach((k) => { S[k] = e[k]; }); save(); }
 
@@ -215,7 +236,12 @@
     ingresarStock(datos) { return aplicarInv(I().ingresar(inv(), datos, ctxInv())).lote; },
     ajustarStock(datos) { return aplicarInv(I().ajustar(inv(), datos, ctxInv())).declaracion; },
     bajaLoteVencido(loteId) { return aplicarInv(I().bajaVencido(inv(), loteId, ctxInv())).declaracion; },
-    marcarDeclarada(id, nroOperacion) { Object.assign(byId('declaraciones', id), { estado: 'declarada', nroOperacion, fechaDeclaracion: new Date().toISOString(), declaradaPor: S.usuarioActivo }); save(); },
+    /* La información que se ingresa en SIGTRAZAVET reviste carácter de declaración jurada (Res. SENASA 654/2026, art. 14). */
+    marcarDeclarada(id, nroOperacion, declaracionJurada) {
+      if (!declaracionJurada) throw new (I().ErrorStock)('Confirmá la declaración jurada');
+      Object.assign(byId('declaraciones', id), { estado: 'declarada', nroOperacion, fechaDeclaracion: new Date().toISOString(), declaradaPor: S.usuarioActivo, declaracionJurada: true });
+      save();
+    },
     guardarProducto(datos) {
       const errores = I().validarProducto(datos, S.productos);
       if (errores.length) throw new (I().ErrorStock)(errores[0]);
@@ -223,10 +249,67 @@
       const p = Object.assign({ activo: true, requiereReceta: false, sigtrazavet: false, principioActivo: '' }, datos, { id: uid('pr') });
       S.productos.push(p); save(); return p;
     },
-    /* Ventas: la lógica de dominio valida todo (tutor, stock, receta) y no modifica nada si algo falla. */
+    /* Venta: caja abierta → venta (stock, receta) → factura electrónica → movimiento de caja. Todo o nada. */
     registrarVenta(venta) {
-      const r = Dominio.ventas.registrar(estadoVentas(), venta, ctxInv({ rol: rol() }));
+      const K = Dominio.caja, Fx = Dominio.facturacion;
+      if (!K.abierta(S.cajas)) throw new Dominio.ventas.ErrorVenta('La caja está cerrada: abrila para vender');
+      const cliente = clienteFactura(venta);
+      const pv = venta.puntoVenta || facturacionCfg().puntoVenta;
+      Fx.validarCliente(Fx.tipoComprobante(Store.clinica.condicionIva, cliente.condicionIva), cliente);
+      const ctx = ctxInv({ rol: rol() });
+      const r = Dominio.ventas.registrar(estadoVentas(), venta, ctx);
+      const f = Fx.emitir({ clase: 'factura', emisor: Store.clinica, cliente, puntoVenta: pv, totalConIva: r.venta.total, items: r.venta.items.map((i) => ({ nombre: i.nombre, cantidad: i.cantidad, precioUnit: i.precioUnit })), fecha: ctx.fecha, ventaId: r.venta.id }, S.comprobantes);
+      f.id = uid('cb');
+      const cajas = K.movimiento(S.cajas, { tipo: 'venta', medio: venta.medioPago, monto: r.venta.total, ref: r.venta.id, usuario: S.usuarioActivo, fecha: ctx.fecha });
+      Object.assign(r.venta, { comprobanteId: f.id, puntoVenta: pv, cliente: venta.tutorId ? null : cliente });
+      S.comprobantes = (S.comprobantes || []).concat([f]); S.cajas = cajas;
+      agendarDosis(venta.pacienteId, r.venta.items, r.venta.id, ctx.fecha);
       aplicarVentas(r.estado); return r.venta;
+    },
+    /* Devolución parcial o total (solo administración): repone stock, emite nota de crédito y registra el reintegro en la caja. */
+    devolverVenta(ventaId, items, motivo) {
+      if (!Dominio.permisos.puedeAccion(rol(), 'anularVenta')) throw new Dominio.ventas.ErrorVenta('Solo administración puede registrar devoluciones');
+      const K = Dominio.caja, Fx = Dominio.facturacion;
+      if (!K.abierta(S.cajas)) throw new Dominio.ventas.ErrorVenta('La caja está cerrada: abrila para registrar la devolución');
+      const ctx = ctxInv({ rol: rol() });
+      const r = Dominio.ventas.devolver(estadoVentas(), ventaId, items, motivo, ctx);
+      const fac = (S.comprobantes || []).find((c) => c.id === r.venta.comprobanteId);
+      let ncId = null, comps = S.comprobantes || [];
+      if (fac) {
+        const nc = Fx.emitir({ clase: 'nc', emisor: Store.clinica, cliente: fac.cliente, puntoVenta: fac.puntoVenta, totalConIva: r.devolucion.importe, items: r.devolucion.items.map((i) => ({ nombre: i.nombre, cantidad: i.cantidad, precioUnit: i.importe / i.cantidad })), fecha: ctx.fecha, ventaId, asociado: fac }, comps);
+        nc.id = ncId = uid('cb'); comps = comps.concat([nc]);
+      }
+      const cajas = K.movimiento(S.cajas, { tipo: 'devolucion', medio: r.venta.medioPago, monto: r.devolucion.importe, ref: ventaId, usuario: S.usuarioActivo, fecha: ctx.fecha });
+      r.devolucion.comprobanteId = ncId;
+      S.comprobantes = comps; S.cajas = cajas;
+      aplicarVentas(r.estado); return r.devolucion;
+    },
+    abrirCaja(montoInicial) { S.cajas = Dominio.caja.abrir(S.cajas, { montoInicial, usuario: S.usuarioActivo, fecha: new Date().toISOString(), id: uid('cj') }).cajas; save(); },
+    movimientoCaja(tipo, monto, nota) { S.cajas = Dominio.caja.movimiento(S.cajas, { tipo, medio: 'efectivo', monto, nota, usuario: S.usuarioActivo, fecha: new Date().toISOString() }); save(); },
+    cerrarCaja(efectivoContado, nota) { const r = Dominio.caja.cerrar(S.cajas, { efectivoContado, nota, usuario: S.usuarioActivo, fecha: new Date().toISOString() }); S.cajas = r.cajas; save(); return r.caja; },
+    /* RVE emitida por ArcionPet (veterinario). Con DEMO_MODE, número simulado; sin él, pendiente de integración. */
+    emitirRVE(receta) {
+      const r = Dominio.rve.emitir(receta, { prescriptor: usuario(), productos: S.productos, emitidas: S.recetas, demo: !!S.config.demoMode, fecha: new Date().toISOString(), id: uid('rv') });
+      S.recetas = (S.recetas || []).concat([Object.assign(r, { registradaPor: S.usuarioActivo, fechaRegistro: r.emisionRegistro.fecha })]);
+      save(); return r;
+    },
+    asignarCuveRVE(id, cuve) { const i = S.recetas.findIndex((r) => r.id === id); S.recetas[i] = Dominio.rve.asignarCuve(S.recetas[i], cuve, S.recetas); save(); return S.recetas[i]; },
+    /* Botiquín de autoconsumo (art. 20): el veterinario usa o entrega un producto de su botiquín sin RVE, con registro en la ficha clínica. */
+    autoconsumo({ pacienteId, productoId, cantidad, dosis, frecuencia, duracion, via, motivo }) {
+      const u = usuario();
+      if (u.rol !== 'veterinario') throw new Dominio.ventas.ErrorVenta('Solo un veterinario puede registrar autoconsumo de botiquín');
+      const pac = paciente(pacienteId), t = tutor(pac.tutorId), p = producto(productoId);
+      const ficha = { tipo: 'botiquin', veterinario: { nombre: u.nombre, matricula: u.matricula }, titular: { nombre: t.nombre, apellido: t.apellido, tipoDoc: t.tipoDoc || 'DNI', doc: t.doc }, animal: { pacienteId, nombre: pac.nombre, especie: pac.especie, raza: pac.raza, edad: edad(pac.nacimiento) }, items: [{ productoId, descripcion: p.principioActivo || p.nombre, presentacion: p.presentacion, cantidad, dosis, frecuencia, duracion, via }] };
+      const err = Dominio.ventas.validarReceta(ficha, new Date());
+      if (err.length) throw new Dominio.ventas.ErrorVenta(err[0]);
+      const ctx = ctxInv({ tipo: 'autoconsumo' });
+      const id = uid('fc');
+      const d = I().descontar(inv(), [{ productoId, cantidad }], Object.assign({}, ctx, { ref: id }));
+      const reg = Object.assign(ficha, { id, fecha: ctx.fecha, motivo: motivo || '', lotes: d.asignaciones[0].plan, usuario: u.id });
+      S.fichaClinica = (S.fichaClinica || []).concat([reg]);
+      if (p.sigtrazavet) d.inv.declaraciones.push({ id: uid('dc'), tipo: 'autoconsumo', productoId, loteId: reg.lotes[0].loteId, lote: reg.lotes.map((l) => l.lote).join(', '), cantidad, ref: id, cuve: null, fecha: ctx.fecha, limite: ctx.fecha, estado: 'pendiente', usuario: u.id });
+      agendarDosis(pacienteId, [{ productoId }], id, ctx.fecha);
+      aplicarInv(d); return reg;
     },
     anularVenta(ventaId, motivo) {
       if (!Dominio.permisos.puedeAccion(rol(), 'anularVenta')) throw new Dominio.ventas.ErrorVenta('Solo administración puede anular ventas');
@@ -251,7 +334,7 @@
       S.redPacientes = S.redPacientes.filter((x) => x.id !== rid);
       save(); return p;
     },
-    addTutor(t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); save(); return t; },
+    addTutor(t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', condicionIva: 'Consumidor final', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); save(); return t; },
     updateTutor(id, data) { Object.assign(byId('tutores', id), data); save(); },
     /* Baja lógica: el tutor y su historial se conservan; deja de ofrecerse para nuevas altas. */
     bajaTutor(id) { Object.assign(byId('tutores', id), { activo: false, fechaBaja: new Date().toISOString() }); save(); },
@@ -358,6 +441,8 @@
     get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
     estudiosActivos, contradicciones, demoras, demoraDe, get demo() { return !!(S.config && S.config.demoMode); },
     moduloHabilitado: (m) => Dominio.configuracion.habilitado(S.config, m),
+    cajaAbierta: () => Dominio.caja.abierta(S.cajas), facturacionCfg, clienteFactura,
+    comprobante: (id) => (S.comprobantes || []).find((c) => c.id === id) || null,
     get umbrales() { return Object.assign({}, Dominio.configuracion.DEFECTO.umbrales, (S.config || {}).umbrales); },
     get clinica() { return Object.assign({}, Dominio.configuracion.DEFECTO.clinica, (S.config || {}).clinica); },
     veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,

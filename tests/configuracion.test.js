@@ -33,3 +33,13 @@ test('módulos habilitados', () => {
   assert.equal(C.habilitado({ modulos: { peluqueria: false } }, 'aliados'), true);
   assert.equal(C.habilitado({ modulos: {} }, null), true);
 });
+
+test('facturación: puntos de venta válidos y solo homologación sin credenciales', () => {
+  const base = JSON.parse(JSON.stringify(C.DEFECTO));
+  const f = (x) => C.validar(Object.assign({}, base, { facturacion: Object.assign({ modo: 'homologacion', proveedor: '', puntosVenta: [{ numero: 1, nombre: 'Mostrador' }], puntoVenta: 1 }, x) }));
+  assert.deepEqual(f({}), []);
+  assert.ok(f({ puntosVenta: [] }).length);
+  assert.ok(f({ puntosVenta: [{ numero: 1, nombre: 'A' }, { numero: 1, nombre: 'B' }] }).some((e) => /mismo número/.test(e)));
+  assert.ok(f({ puntoVenta: 3 }).some((e) => /por defecto/.test(e)));
+  assert.ok(f({ modo: 'produccion' }).some((e) => /homologación/.test(e)));
+});

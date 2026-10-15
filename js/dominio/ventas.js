@@ -66,9 +66,9 @@
   /* Valida una venta antes de registrarla. estado = { tutores, pacientes, productos, lotes, recetas }. */
   function validarVenta(estado, venta, hoy, rol) {
     const e = [];
-    const tutor = estado.tutores.find((t) => t.id === venta.tutorId);
-    if (!tutor) e.push('Elegí el tutor: toda venta queda asociada a un tutor');
-    else if (tutor.activo === false) e.push('El tutor está dado de baja');
+    const tutor = venta.tutorId ? estado.tutores.find((t) => t.id === venta.tutorId) : null;
+    if (venta.tutorId && !tutor) e.push('Tutor inexistente');
+    else if (tutor && tutor.activo === false) e.push('El tutor está dado de baja');
     const pac = venta.pacienteId ? estado.pacientes.find((p) => p.id === venta.pacienteId) : null;
     if (venta.pacienteId && (!pac || (tutor && pac.tutorId !== tutor.id))) e.push('La mascota no pertenece al tutor');
     if (!MEDIOS[venta.medioPago]) e.push('Elegí el medio de pago');
@@ -81,12 +81,14 @@
       if (p.catalogo === 'farmacia' && rol === 'peluqueria') e.push('Tu rol no puede vender productos de farmacia');
       if (p.requiereReceta) conReceta.push({ p, it });
     });
-    if (conReceta.length) {
+    if (conReceta.length && !tutor) e.push('Los productos bajo receta no se venden a consumidor final: elegí el tutor y la mascota');
+    if (conReceta.length && tutor) {
       if (!venta.receta) e.push('Hay productos de venta bajo receta: registrá la receta veterinaria electrónica' + (rol === 'veterinario' ? ' o la entrega desde botiquín' : ''));
       else {
         const r = venta.receta;
         if (r.tipo === 'botiquin' && rol !== 'veterinario') e.push('Solo un veterinario puede entregar desde su botiquín profesional (art. 20)');
-        if (r.estado && r.estado !== 'vigente') e.push('La receta ya fue ' + (r.estado === 'dispensada' ? 'dispensada en otra venta' : r.estado) + ': cada RVE admite una sola dispensa');
+        if (r.estado === 'pendiente_integracion') e.push('La receta está pendiente de integración: todavía no tiene número válido (CUVE)');
+        else if (r.estado && r.estado !== 'vigente') e.push('La receta ya fue ' + (r.estado === 'dispensada' ? 'dispensada en otra venta' : r.estado) + ': cada RVE admite una sola dispensa');
         validarReceta(r, hoy).forEach((x) => e.push(x));
         if (tutor && r.titular && T.normalizarDoc(r.titular.tipoDoc || 'DNI', r.titular.doc) !== T.normalizarDoc(tutor.tipoDoc || 'DNI', tutor.doc)) e.push('El titular de la receta no coincide con el tutor (documento distinto)');
         if (!pac) e.push('Elegí la mascota: la receta es para un animal determinado');
@@ -135,7 +137,7 @@
       });
     }
     const numero = (s.ventas.reduce((m, v) => Math.max(m, v.numero || 0), 0)) + 1;
-    const nueva = { id, numero, fecha: ctx.fecha, tutorId: venta.tutorId, pacienteId: venta.pacienteId || null, items, total: tot.total, ivaContenido: tot.ivaContenido, medioPago: venta.medioPago, cuotas: venta.medioPago === 'credito' ? (venta.cuotas || 1) : null, estado: 'confirmada', recetaId, usuario: ctx.usuario };
+    const nueva = { id, numero, fecha: ctx.fecha, tutorId: venta.tutorId || null, pacienteId: venta.pacienteId || null, items, total: tot.total, ivaContenido: tot.ivaContenido, medioPago: venta.medioPago, cuotas: venta.medioPago === 'credito' ? (venta.cuotas || 1) : null, estado: 'confirmada', recetaId, usuario: ctx.usuario };
     s.ventas.push(nueva);
     return { estado: s, venta: nueva };
   }
@@ -165,6 +167,48 @@
     return { estado: s, venta: v };
   }
 
+  /* Devolución parcial o total: repone cada unidad al lote del que salió (empezando por el último), libera la receta
+     si se devuelve todo y deja sin efecto o pendientes de anular las declaraciones de SIGTRAZAVET. items: [{ productoId, cantidad }]. */
+  function devolver(estado, ventaId, items, motivo, ctx) {
+    const s = clonar(estado);
+    const v = (s.ventas || []).find((x) => x.id === ventaId);
+    if (!v) throw new ErrorVenta('Venta inexistente');
+    if (v.estado === 'anulada' || v.estado === 'devuelta') throw new ErrorVenta('La venta ya fue devuelta por completo');
+    if (!txt(motivo)) throw new ErrorVenta('Indicá el motivo de la devolución');
+    const pedidos = (items || []).filter((i) => i.cantidad > 0);
+    if (!pedidos.length) throw new ErrorVenta('Elegí qué productos se devuelven');
+    const yaDevuelto = (pid) => (v.devoluciones || []).reduce((t, d) => t + d.items.filter((i) => i.productoId === pid).reduce((a, i) => a + i.cantidad, 0), 0);
+    const asignaciones = [];
+    const detalle = pedidos.map((pi) => {
+      const it = v.items.find((x) => x.productoId === pi.productoId);
+      if (!it) throw new ErrorVenta('El producto no está en la venta');
+      if (!Number.isInteger(pi.cantidad) || pi.cantidad > it.cantidad - yaDevuelto(pi.productoId)) throw new ErrorVenta(it.nombre + ': no se pueden devolver más unidades de las vendidas');
+      // se reponen primero las unidades del último lote usado
+      const usados = it.lotes.map((l) => Object.assign({}, l));
+      let previo = yaDevuelto(pi.productoId);
+      for (let k = usados.length - 1; k >= 0 && previo > 0; k--) { const q = Math.min(previo, usados[k].cantidad); usados[k].cantidad -= q; previo -= q; }
+      const plan = []; let resta = pi.cantidad;
+      for (let k = usados.length - 1; k >= 0 && resta > 0; k--) { const q = Math.min(resta, usados[k].cantidad); if (q) plan.push({ loteId: usados[k].loteId, lote: usados[k].lote, vence: usados[k].vence, cantidad: q }); resta -= q; }
+      asignaciones.push({ productoId: pi.productoId, plan });
+      return { productoId: pi.productoId, nombre: it.nombre, cantidad: pi.cantidad, importe: it.precioUnit * pi.cantidad, lotes: plan };
+    });
+    const r = I.reponer(s, asignaciones, Object.assign({}, ctx, { ref: v.id, tipo: 'devolucion' }));
+    ['productos', 'lotes', 'movimientos'].forEach((k) => { s[k] = r.inv[k]; });
+    const dev = { id: ctx.id('dv'), fecha: ctx.fecha, usuario: ctx.usuario, motivo: txt(motivo), items: detalle, importe: detalle.reduce((t, d) => t + d.importe, 0) };
+    v.devoluciones = (v.devoluciones || []).concat([dev]);
+    const total = v.items.every((it) => yaDevuelto(it.productoId) >= it.cantidad);
+    v.estado = total ? 'devuelta' : 'devolucion_parcial';
+    if (total && v.recetaId) {
+      const rec = (s.recetas || []).find((x) => x.id === v.recetaId);
+      if (rec) Object.assign(rec, { estado: rec.tipo !== 'botiquin' && diasVigencia(rec, new Date(ctx.fecha)) >= 0 ? 'vigente' : 'anulada', ventaId: null, fechaDispensa: null });
+    }
+    detalle.forEach((d) => (s.declaraciones || []).filter((x) => x.ref === v.id && x.productoId === d.productoId && ['venta_rve', 'autoconsumo'].includes(x.tipo) && x.estado !== 'sin_efecto').forEach((x) => {
+      if (x.estado === 'pendiente') x.estado = 'sin_efecto';
+      else s.declaraciones.push({ id: ctx.id('dc'), tipo: 'anulacion', productoId: x.productoId, loteId: x.loteId, lote: x.lote, cantidad: d.cantidad, ref: v.id, cuve: x.cuve, nroOriginal: x.nroOperacion || null, fecha: ctx.fecha, limite: masDias(ctx.fecha, PLAZO_ANULACION), estado: 'pendiente', usuario: ctx.usuario });
+    }));
+    return { estado: s, venta: v, devolucion: dev };
+  }
+
   /* Recetas registradas que se pueden usar para un tutor y una mascota. */
   function recetasDisponibles(recetas, tutor, pacienteId, hoy) {
     return (recetas || []).filter((r) => r.tipo !== 'botiquin' && r.estado === 'vigente' && diasVigencia(r, hoy) >= 0 &&
@@ -173,12 +217,13 @@
   }
 
   function resumen(ventas, desde, hasta) {
-    const lista = (ventas || []).filter((v) => v.estado !== 'anulada' && (!desde || v.fecha >= desde) && (!hasta || v.fecha < hasta));
+    const lista = (ventas || []).filter((v) => v.estado !== 'anulada' && v.estado !== 'devuelta' && (!desde || v.fecha >= desde) && (!hasta || v.fecha < hasta));
+    const neto = (v) => v.total - (v.devoluciones || []).reduce((t, d) => t + d.importe, 0); // se descuentan las devoluciones parciales
     const porMedio = {};
-    lista.forEach((v) => { porMedio[v.medioPago] = (porMedio[v.medioPago] || 0) + v.total; });
-    const total = lista.reduce((t, v) => t + v.total, 0);
+    lista.forEach((v) => { porMedio[v.medioPago] = (porMedio[v.medioPago] || 0) + neto(v); });
+    const total = lista.reduce((t, v) => t + neto(v), 0);
     return { cantidad: lista.length, total, promedio: lista.length ? total / lista.length : 0, porMedio };
   }
 
-  return { MEDIOS, IVA, VIGENCIA_RVE, PLAZO_ANULACION, VIAS, ErrorVenta, totales, diasVigencia, validarReceta, validarVenta, registrar, anular, recetasDisponibles, resumen };
+  return { MEDIOS, IVA, VIGENCIA_RVE, PLAZO_ANULACION, VIAS, ErrorVenta, totales, diasVigencia, validarReceta, validarVenta, registrar, anular, devolver, recetasDisponibles, resumen };
 });
