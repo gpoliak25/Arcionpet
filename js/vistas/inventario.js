@@ -8,7 +8,7 @@
   const usuarioNombre = (id) => ((S().usuarios || []).find((u) => u.id === id) || {}).nombre || id || '';
   const TIPO_DECL = { vencimiento: 'Vencimiento', merma: 'Merma', rotura: 'Rotura', robo: 'Robo o hurto', venta_rve: 'Venta con RVE (art. 11)', autoconsumo: 'Autoconsumo de botiquín (art. 20)', anulacion: 'Anulación de operación (art. 8 c)' };
   const plazoDecl = (d) => { if (d.tipo === 'venta_rve' || d.tipo === 'autoconsumo') return 'en tiempo real'; const r = I().diasHasta(d.limite, hoy()); return r < 0 ? 'plazo vencido' : r === 0 ? 'vence hoy' : 'quedan ' + r + ' días'; };
-  const TIPO_MOV = { ingreso: 'Ingreso', venta: 'Venta', anulacion: 'Anulación de venta', devolucion: 'Devolución de venta', ajuste: 'Ajuste', baja_vencimiento: 'Baja por vencimiento', autoconsumo: 'Autoconsumo de botiquín' };
+  const TIPO_MOV = { ingreso: 'Ingreso', venta: 'Venta', anulacion: 'Anulación de venta', devolucion: 'Devolución de venta', ajuste: 'Ajuste', baja_vencimiento: 'Baja por vencimiento', autoconsumo: 'Autoconsumo de botiquín', consumo_interno: 'Insumo de peluquería' };
   const margenTxt = (p) => { const mg = I().margen(p); return mg ? pesos(p.costo) + ' <span class="sp">· ' + mg.pct.toLocaleString('es-AR') + ' %</span>' : '<span class="muted">—</span>'; };
 
   function catalogoActual() {

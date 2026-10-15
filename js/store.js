@@ -32,8 +32,9 @@
     }
     return M.migrar(clone(SEED));
   }
+  let guardadoOk = true; // false si el navegador no tuvo espacio para guardar
   function save() {
-    if (!soloLectura) lsSet(KEY, JSON.stringify(S));
+    if (!soloLectura) guardadoOk = lsSet(KEY, JSON.stringify(S));
     listeners.forEach((fn) => fn());
   }
   const listeners = [];
@@ -225,7 +226,12 @@
   /* ---------- Turnos ---------- */
   const TU = () => Dominio.turnos;
   const ctxTurnos = () => ({ turnos: S.turnos, recursos: S.recursos || [], servicios: S.servicios || [], pacientes: S.pacientes, agenda: (S.config || {}).agenda, ahora: new Date().toISOString() });
-  const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes, servicios: S.servicios || [] }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
+  /* Peluquería: misma lógica de agenda con sus propios turnos, servicios y peluqueros. */
+  const PE = () => Dominio.peluqueria;
+  const ctxPel = () => ({ turnos: S.pelTurnos || [], recursos: S.pelRecursos || [], servicios: S.pelServicios || [], pacientes: S.pacientes, agenda: (S.config || {}).agenda, ahora: new Date().toISOString() });
+  const pelFicha = (pacienteId) => (S.pelFichas || []).find((f) => f.pacienteId === pacienteId) || null;
+  const pelServicio = (id) => (S.pelServicios || []).find((x) => x.id === id) || null;
+  const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes, servicios: (S.servicios || []).concat(S.pelServicios || []) }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
   function aplicarVentas(e) { CLAVES_VENTA.forEach((k) => { S[k] = e[k]; }); save(); }
 
   /* ---------- Mutaciones ---------- */
@@ -267,7 +273,7 @@
       Object.assign(r.venta, { comprobanteId: f.id, puntoVenta: pv, cliente: venta.tutorId ? null : cliente });
       S.comprobantes = (S.comprobantes || []).concat([f]); S.cajas = cajas;
       agendarDosis(venta.pacienteId, r.venta.items.filter((i) => !i.servicio), r.venta.id, ctx.fecha);
-      r.venta.items.filter((i) => i.turnoId).forEach((i) => { const t = byId('turnos', i.turnoId); if (t) t.ventaId = r.venta.id; });
+      r.venta.items.filter((i) => i.turnoId).forEach((i) => { const t = byId('turnos', i.turnoId) || (S.pelTurnos || []).find((x) => x.id === i.turnoId); if (t) t.ventaId = r.venta.id; });
       aplicarVentas(r.estado); return r.venta;
     },
     /* Devolución parcial o total (solo administración): repone stock, emite nota de crédito y registra el reintegro en la caja. */
@@ -363,6 +369,70 @@
       let t = TU().reprogramar(S.turnos[i], fecha, ctxTurnos(), (opciones && opciones.portal) ? 'tutor' : S.usuarioActivo);
       if (opciones && opciones.portal) t = Object.assign(t, { estado: 'pendiente', origen: 'portal' });
       S.turnos[i] = t; save(); return t;
+    },
+    /* ---------- Peluquería ---------- */
+    addPelTurno(datos) {
+      const sv = pelServicio(datos.servicioId);
+      if (!sv) throw new (TU().ErrorTurno)('Elegí el servicio');
+      const pac = paciente(datos.pacienteId);
+      const cot = pac ? PE().cotizar(sv, pac, pelFicha(pac.id)) : { duracion: sv.duracion, precio: sv.precio };
+      const t = Object.assign({ estado: 'confirmado', origen: 'clinica', historial: [] }, datos, { tipo: sv.nombre, duracion: datos.duracion || cot.duracion, precio: cot.precio, recursos: datos.recursos || sv.recursosDefecto.slice() });
+      const e = TU().validar(t, ctxPel());
+      if (e.length) throw new (TU().ErrorTurno)(e[0]);
+      t.id = uid('pt'); t.creado = new Date().toISOString(); t.creadoPor = S.usuarioActivo;
+      S.pelTurnos = (S.pelTurnos || []).concat([t]); save(); return t;
+    },
+    setPelTurno(id, estado, extra) {
+      const i = S.pelTurnos.findIndex((t) => t.id === id);
+      const sello = estado === 'cancelado' ? { cancelacion: Object.assign({ fecha: new Date().toISOString(), por: S.usuarioActivo }, extra || {}) } : {};
+      S.pelTurnos[i] = TU().cambiarEstado(S.pelTurnos[i], estado, sello); save(); return S.pelTurnos[i];
+    },
+    reprogramarPelTurno(id, fecha) {
+      const i = S.pelTurnos.findIndex((t) => t.id === id);
+      S.pelTurnos[i] = TU().reprogramar(S.pelTurnos[i], fecha, ctxPel(), S.usuarioActivo); save(); return S.pelTurnos[i];
+    },
+    /* Atendido: descuenta los insumos del servicio (todo o nada), guarda las fotos y la nota de la visita en la ficha
+       y agenda la próxima visita sugerida para los recordatorios. */
+    atenderPelTurno(id, { insumos, nota, fotos }) {
+      const i = S.pelTurnos.findIndex((t) => t.id === id);
+      const t = TU().cambiarEstado(S.pelTurnos[i], 'atendido');
+      const sv = pelServicio(t.servicioId), ahora = new Date().toISOString();
+      let d = null;
+      const usar = insumos ? (sv.insumos || []) : [];
+      if (usar.length) d = I().descontar(inv(), usar, Object.assign(ctxInv({ tipo: 'consumo_interno' }), { ref: id }));
+      const ficha = Object.assign({ pacienteId: t.pacienteId, tamano: '', preferencias: '', temperamento: '', piel: '', observaciones: '', fotos: [], visitas: [] }, pelFicha(t.pacienteId));
+      const nuevas = (fotos || []).map((f) => ({ id: uid('ft'), fecha: ahora, turnoId: id, tipo: f.tipo, src: f.src }));
+      const err = PE().validarFicha(Object.assign({}, ficha, { fotos: ficha.fotos.concat(nuevas) }));
+      if (err.length) throw new (PE().ErrorPeluqueria)(err[0]);
+      ficha.fotos = ficha.fotos.concat(nuevas);
+      ficha.visitas = (ficha.visitas || []).concat([{ fecha: ahora, turnoId: id, servicio: sv.nombre, nota: nota || '', usuario: S.usuarioActivo, insumos: usar.length ? usar : [] }]);
+      ficha.actualizado = ahora;
+      S.pelFichas = (S.pelFichas || []).filter((f) => f.pacienteId !== t.pacienteId).concat([ficha]);
+      S.pelTurnos[i] = Object.assign(t, { atendido: ahora, atendidoPor: S.usuarioActivo, insumosDescontados: usar.length > 0 });
+      const prox = PE().proximaVisita(sv, ahora);
+      if (prox) {
+        S.calendarioSalud = (S.calendarioSalud || []).map((c) => (c.pacienteId === t.pacienteId && c.servicioId === sv.id && c.estado === 'pendiente' ? Object.assign({}, c, { estado: 'reemplazada' }) : c));
+        S.calendarioSalud.push({ id: uid('cs'), pacienteId: t.pacienteId, servicioId: sv.id, productoId: null, nombre: sv.nombre, categoria: 'Peluquería', fecha: prox, origen: id, estado: 'pendiente', creado: ahora });
+      }
+      if (d) aplicarInv(d); else save();
+      return S.pelTurnos[i];
+    },
+    guardarPelFicha(pacienteId, datos) {
+      const actual = pelFicha(pacienteId) || { pacienteId, fotos: [], visitas: [] };
+      const f = Object.assign({}, actual, datos, { pacienteId, actualizado: new Date().toISOString() });
+      const e = PE().validarFicha(f);
+      if (e.length) throw new (PE().ErrorPeluqueria)(e[0]);
+      S.pelFichas = (S.pelFichas || []).filter((x) => x.pacienteId !== pacienteId).concat([f]); save(); return f;
+    },
+    agregarFotoPel(pacienteId, tipo, src) { const f = pelFicha(pacienteId) || { fotos: [] }; return A.guardarPelFicha(pacienteId, { fotos: (f.fotos || []).concat([{ id: uid('ft'), fecha: new Date().toISOString(), turnoId: null, tipo, src }]) }); },
+    quitarFotoPel(pacienteId, fotoId) { const f = pelFicha(pacienteId); return A.guardarPelFicha(pacienteId, { fotos: f.fotos.filter((x) => x.id !== fotoId) }); },
+    guardarPelServicio(datos) {
+      if (!Dominio.permisos.puedeAccion(rol(), 'editarPrecios')) throw new (PE().ErrorPeluqueria)('Solo administración puede cambiar precios');
+      const e = PE().validarServicio(datos);
+      if (e.length) throw new (PE().ErrorPeluqueria)(e[0]);
+      const sv = Object.assign({}, pelServicio(datos.id), datos);
+      sv.precio = sv.porTamano.mediano.precio; sv.duracion = sv.porTamano.mediano.duracion;
+      S.pelServicios = S.pelServicios.map((x) => (x.id === sv.id ? sv : x)); save(); return sv;
     },
     /* Atendido: si el servicio aplica una vacuna o un antiparasitario, el veterinario registra la aplicación (botiquín, art. 20). */
     atenderTurno(id, aplicacion) {
@@ -480,6 +550,8 @@
     moduloHabilitado: (m) => Dominio.configuracion.habilitado(S.config, m),
     cajaAbierta: () => Dominio.caja.abierta(S.cajas), facturacionCfg, clienteFactura, ctxTurnos,
     servicio: (id) => (S.servicios || []).find((x) => x.id === id) || null,
+    get guardadoOk() { return guardadoOk; },
+    pelServicio, pelFicha, ctxPel, pelRecurso: (id) => (S.pelRecursos || []).find((x) => x.id === id) || null,
     recurso: (id) => (S.recursos || []).find((x) => x.id === id) || null,
     get agenda() { return Object.assign({}, Dominio.turnos.AGENDA_DEFECTO, (S.config || {}).agenda); },
     comprobante: (id) => (S.comprobantes || []).find((c) => c.id === id) || null,

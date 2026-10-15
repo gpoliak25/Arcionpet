@@ -270,6 +270,52 @@
         return s;
       },
     },
+    {
+      de: 16, a: 17, descripcion: 'Peluquería: servicios por tamaño, peluqueros, agenda propia, fichas por mascota e insumos',
+      up(s) {
+        const T = (chico, mediano, grande, gigante) => ({ chico: { precio: chico[0], duracion: chico[1] }, mediano: { precio: mediano[0], duracion: mediano[1] }, grande: { precio: grande[0], duracion: grande[1] }, gigante: { precio: gigante[0], duracion: gigante[1] } });
+        const SV = (id, nombre, porTamano, extra) => Object.assign({ id, nombre, porTamano, requiere: ['profesional'], recursosDefecto: ['rp-1'], recargoPeloLargo: false, insumos: [], frecuenciaDias: null, portal: true, activo: true, peluqueria: true }, extra || {});
+        s.pelServicios = [
+          SV('pel-bano', 'Baño común', T([14000, 45], [18000, 60], [24000, 75], [30000, 90]), { recargoPeloLargo: true, insumos: [{ productoId: 'ps-hig-02', cantidad: 1 }], frecuenciaDias: 30 }),
+          SV('pel-bano-hipo', 'Baño hipoalergénico', T([17000, 50], [21000, 65], [28000, 80], [35000, 95]), { recargoPeloLargo: true, insumos: [{ productoId: 'ps-hig-01', cantidad: 1 }], frecuenciaDias: 30 }),
+          SV('pel-corte', 'Corte', T([16000, 45], [21000, 60], [27000, 75], [33000, 90]), { recargoPeloLargo: true, frecuenciaDias: 45 }),
+          SV('pel-bano-corte', 'Baño y corte', T([26000, 75], [33000, 90], [42000, 120], [52000, 150]), { recargoPeloLargo: true, insumos: [{ productoId: 'ps-hig-02', cantidad: 1 }], frecuenciaDias: 45 }),
+          SV('pel-peinado', 'Peinado y cepillado', T([9000, 30], [11000, 40], [14000, 50], [17000, 60]), { recargoPeloLargo: true }),
+          SV('pel-unas', 'Corte de uñas', T([5000, 15], [5500, 15], [6000, 20], [7000, 20]), { frecuenciaDias: 30 }),
+        ];
+        // precio de referencia (tamaño mediano) para validar líneas de venta
+        s.pelServicios.forEach((x) => { x.precio = x.porTamano.mediano.precio; x.duracion = x.porTamano.mediano.duracion; });
+        const pel = (s.usuarios || []).find((u) => u.id === 'u-pel') || {};
+        s.pelRecursos = [
+          { id: 'rp-1', tipo: 'profesional', nombre: pel.nombre || 'Peluquero/a 1', usuarioId: 'u-pel', activo: true },
+          { id: 'rp-2', tipo: 'profesional', nombre: 'Camila Ortiz (ejemplo)', usuarioId: null, activo: true },
+        ];
+        const dia = (n, h, m) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, m || 0, 0, 0); return d.toISOString(); };
+        const pacs = s.pacientes || [];
+        const tu = (id, pacienteId, servicioId, recurso, fecha, estado) => {
+          const sv = s.pelServicios.find((x) => x.id === servicioId);
+          return pacs.some((p) => p.id === pacienteId) ? { id, pacienteId, servicioId, tipo: sv.nombre, duracion: sv.porTamano.mediano.duracion, precio: sv.porTamano.mediano.precio, recursos: [recurso], fecha, estado, origen: 'clinica', historial: [] } : null;
+        };
+        s.pelTurnos = [tu('pt1', 'p1', 'pel-bano', 'rp-1', dia(0, 10), 'confirmado'), tu('pt2', 'p6', 'pel-bano-corte', 'rp-2', dia(0, 11), 'confirmado'), tu('pt3', 'p4', 'pel-unas', 'rp-1', dia(1, 9, 30), 'confirmado'), tu('pt4', 'p2', 'pel-peinado', 'rp-2', dia(-7, 15), 'atendido')].filter(Boolean);
+        s.pelFichas = pacs.some((p) => p.id === 'p6') ? [{ pacienteId: 'p6', tamano: 'grande', preferencias: 'Corte prolijo, sin rapar el lomo.', temperamento: 'Tranquilo, se pone nervioso con el secador.', piel: 'Sin alergias conocidas.', observaciones: '', fotos: [], actualizado: dia(-7, 15) }] : [];
+        // insumos de peluquería (también se venden en el pet shop)
+        const ean = (doce) => { let t = 0; for (let i = 0; i < 12; i++) t += +doce[i] * (i % 2 ? 3 : 1); return doce + ((10 - (t % 10)) % 10); };
+        const hoy = new Date().toISOString().slice(0, 10);
+        const P = (id, nombre, precio, costo, cod) => ({ id, catalogo: 'petshop', categoria: 'Higiene y peluquería', nombre, marca: 'PeluPet', presentacion: 'Monodosis 50 ml', sku: id.toUpperCase(), precio, stockMinimo: 10, activo: true, requiereReceta: false, sigtrazavet: false, principioActivo: '', costo, proveedor: 'Distribuidora Mascotas Sur (ejemplo)', codigoBarras: ean(cod), intervaloDias: null, v17: true });
+        s.productos = (s.productos || []).concat([P('ps-hig-01', 'Shampoo hipoalergénico', 3500, 1700, '200000000901'), P('ps-hig-02', 'Shampoo neutro', 1800, 800, '200000000902')]);
+        s.lotes = (s.lotes || []).concat([{ id: 'lt-v17-1', productoId: 'ps-hig-01', lote: 'SH2610', vence: null, cantidad: 30, ingreso: hoy }, { id: 'lt-v17-2', productoId: 'ps-hig-02', lote: 'SN2610', vence: null, cantidad: 40, ingreso: hoy }]);
+        s.movimientos = (s.movimientos || []).concat(s.lotes.filter((l) => l.id.startsWith('lt-v17')).map((l) => ({ id: 'mv-' + l.id, productoId: l.productoId, loteId: l.id, tipo: 'ingreso', cantidad: l.cantidad, fecha: hoy + 'T10:00:00.000Z', usuario: 'u-adm', nota: 'Inventario inicial de peluquería' })));
+        return s;
+      },
+      down(s) {
+        ['pelServicios', 'pelRecursos', 'pelTurnos', 'pelFichas'].forEach((k) => delete s[k]);
+        const ids = (s.productos || []).filter((p) => p.v17).map((p) => p.id);
+        s.productos = (s.productos || []).filter((p) => !p.v17);
+        s.lotes = (s.lotes || []).filter((l) => !ids.includes(l.productoId));
+        s.movimientos = (s.movimientos || []).filter((m) => !ids.includes(m.productoId));
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

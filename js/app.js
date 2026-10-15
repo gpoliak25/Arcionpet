@@ -28,6 +28,11 @@
     { id: 'servicios', g: 'Servicios', modulo: 'servicios', items: [
       { h: '#/turnos', l: 'Turnos', i: 'calendar', m: 'turnos', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
     ] },
+    { id: 'peluqueria', g: 'Peluquería', modulo: 'peluqueria', items: [
+      { h: '#/peluqueria', l: 'Agenda', i: 'scissors', m: 'peluqueria', c: () => (S().pelTurnos || []).filter((t) => t.estado === 'confirmado' && Store.isToday(t.fecha)).length },
+      { h: '#/peluqueria-fichas', l: 'Fichas', i: 'paw', m: 'peluqueria' },
+      { h: '#/peluqueria-servicios', l: 'Servicios y precios', i: 'file', m: 'peluqueria' },
+    ] },
     { id: 'red', g: 'Red y gestión', items: [
       { h: '#/interconsultas', l: 'Interconsultas', i: 'chat', m: 'interconsultas', c: () => S().interconsultas.filter((i) => i.noLeida).length },
       { h: '#/arcion', l: 'ARCION Pet', i: 'spark', m: 'arcion' },
@@ -40,7 +45,7 @@
     ] },
   ];
   /* Rutas que pertenecen a un módulo opcional (se ocultan si está deshabilitado en Configuración). */
-  const MODULO_OPCIONAL = { petshop: 'inventario', farmacia: 'inventario', inventario: 'inventario', ventas: 'inventario', recetas: 'inventario', turnos: 'servicios' };
+  const MODULO_OPCIONAL = { petshop: 'inventario', farmacia: 'inventario', inventario: 'inventario', ventas: 'inventario', recetas: 'inventario', turnos: 'servicios', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria' };
   const PLEGADAS_KEY = 'arcionpet-nav-plegadas';
   let plegadas = [];
   try { plegadas = JSON.parse(localStorage.getItem(PLEGADAS_KEY) || '[]'); } catch (e) { /* sin storage */ }
@@ -56,6 +61,9 @@
     ventas: (id) => (id === 'nueva' ? Views.ventaNueva() : Views.ventas()),
     tutores: (id) => (id ? Views.tutorDetalle(id) : Views.tutores()),
     turnos: () => Views.turnos(),
+    peluqueria: () => Views.peluqueria(),
+    'peluqueria-fichas': () => Views.peluqueriaFichas(),
+    'peluqueria-servicios': () => Views.peluqueriaServicios(),
     estudios: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()),
     imagenes: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()), // alias del nombre nuevo del módulo
     triage: () => Views.triage(),
@@ -70,7 +78,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', petshop: 'petshop', farmacia: 'farmacia', recetas: 'recetas', configuracion: 'configuracion', ventas: 'ventas', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', petshop: 'petshop', farmacia: 'farmacia', recetas: 'recetas', configuracion: 'configuracion', ventas: 'ventas', turnos: 'turnos', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();

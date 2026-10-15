@@ -5,12 +5,8 @@
   const { S, A, go, pageHead, empty, tutorName, on, pacienteOptions, kpi, turnoEstadoBadge, ui } = VC;
   const TU = () => Dominio.turnos;
   const pesos = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
-  const PX_MIN = 1.2; // alto del calendario: píxeles por minuto
-  const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  const aMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
-  const hhmm = (min) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+  const iso = (d) => VC.isoDia(d);
   const recursosDe = (t) => (t.recursos || []).map((id) => (Store.recurso(id) || {}).nombre).filter(Boolean).join(' · ');
-  const COLOR = { pendiente: 'amber', confirmado: 'blue', atendido: 'green', no_vino: 'gray', cancelado: 'gray' };
 
   function intentar(fn, ok) {
     try { const r = fn(); if (ok) ok(r); return true; } catch (e) {
@@ -55,44 +51,21 @@
         });
         on(root, '[data-atender]', 'click', (el) => atenderForm(el.dataset.atender));
         on(root, '[data-cobrar]', 'click', (el) => cobrar(el.dataset.cobrar));
-        on(root, '[data-ver]', 'click', (el, e) => { e.stopPropagation(); turnoDetalle(el.dataset.ver); });
-        on(root, '[data-dia]', 'click', (el) => { const d = new Date(dia); d.setDate(d.getDate() + Number(el.dataset.dia)); ui.calDia = el.dataset.dia === '0' ? null : iso(d); App.render(); });
+        on(root, '.list-row [data-ver]', 'click', (el) => turnoDetalle(el.dataset.ver));
         on(root, '[data-rec]', 'click', (el) => { ui.calRec = el.dataset.rec; App.render(); });
-        const fd = root.querySelector('#cal-fecha'); if (fd) fd.onchange = (e) => { ui.calDia = e.target.value || null; App.render(); };
         // clic en un hueco del calendario: nuevo turno con ese recurso y esa hora
-        on(root, '.cal-col', 'click', (el, e) => {
-          if (e.target.closest('.cal-ev')) return;
-          const r = el.getBoundingClientRect();
-          const min = aMin(Store.agenda.inicio) + Math.floor((e.clientY - r.top) / PX_MIN / Store.agenda.intervalo) * Store.agenda.intervalo;
-          turnoForm(null, { dia: iso(dia), hora: hhmm(min), recurso: el.dataset.col });
-        });
+        VC.bindCal(root, { dia, agenda: Store.agenda, clave: 'calDia', onVer: turnoDetalle, onSlot: (recurso, d, hora) => turnoForm(null, { dia: d, hora, recurso }) });
       },
     };
   }
 
   /* Calendario de un día: una columna por recurso, los turnos como bloques según hora y duración. */
   function calendario(dia, tipoRec) {
-    const ag = Store.agenda, ini = aMin(ag.inicio), finAg = aMin(ag.fin);
-    const recursos = (S().recursos || []).filter((r) => r.activo !== false && (tipoRec === 'todos' || r.tipo === tipoRec));
-    const delDia = S().turnos.filter((t) => new Date(t.fecha).toDateString() === dia.toDateString() && t.estado !== 'cancelado');
-    const occ = TU().ocupacion(S().turnos, recursos, dia, ag);
-    const alto = (finAg - ini) * PX_MIN;
-    const horas = []; for (let m = ini; m < finAg; m += 60) horas.push(m);
-    const col = (r) => '<div class="cal-col" data-col="' + r.id + '" style="height:' + alto + 'px;background-size:100% ' + (60 * PX_MIN) + 'px">' +
-      delDia.filter((t) => (t.recursos || []).includes(r.id)).map((t) => {
-        const d = new Date(t.fecha), top = (d.getHours() * 60 + d.getMinutes() - ini) * PX_MIN, h = Math.max((t.duracion || 30) * PX_MIN - 2, 18);
-        const p = Store.paciente(t.pacienteId) || {};
-        return '<button class="cal-ev ' + COLOR[t.estado] + '" data-ver="' + t.id + '" style="top:' + top + 'px;height:' + h + 'px" title="' + esc(p.nombre + ' · ' + t.tipo + ' · ' + fTime(t.fecha) + ' · ' + (TU().ESTADOS[t.estado] || '')) + '"><b>' + fTime(t.fecha) + ' ' + esc(p.nombre) + '</b><span>' + esc(t.tipo) + '</span></button>';
-      }).join('') + '</div>';
-    return '<div class="card"><div class="card-head" style="flex-wrap:wrap;gap:10px"><span class="ic">' + icon('calendar') + '</span><h3 style="flex:1;min-width:180px">' + fLong(dia) + '</h3>' +
-      '<div class="seg"><button data-dia="-1" aria-label="Día anterior">‹</button><button data-dia="0">Hoy</button><button data-dia="1" aria-label="Día siguiente">›</button></div>' +
-      '<input type="date" id="cal-fecha" class="filter" value="' + iso(dia) + '">' +
-      '<div class="seg">' + [['profesional', 'Profesionales'], ['sala', 'Salas'], ['equipo', 'Equipos'], ['todos', 'Todos']].map(([k, l]) => '<button data-rec="' + k + '" class="' + (tipoRec === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>' +
-      (recursos.length ? '<div class="cal" style="grid-template-columns:52px repeat(' + recursos.length + ', minmax(150px, 1fr))">' +
-        '<div></div>' + recursos.map((r) => '<div class="cal-h"><b>' + esc(r.nombre) + '</b><span>' + esc(TU().TIPOS_RECURSO[r.tipo]) + ' · ' + occ[r.id] + ' % ocupado</span></div>').join('') +
-        '<div class="cal-horas" style="height:' + alto + 'px">' + horas.map((m) => '<span style="top:' + ((m - ini) * PX_MIN) + 'px">' + hhmm(m) + '</span>').join('') + '</div>' +
-        recursos.map(col).join('') + '</div><p class="small muted" style="margin:10px 22px 16px">Hacé clic en un hueco para agendar con ese recurso y a esa hora, o en un turno para ver el detalle.</p>'
-        : empty('calendar', 'Sin recursos de este tipo', '')) + '</div>';
+    return VC.calDia({
+      dia, agenda: Store.agenda, turnos: S().turnos,
+      recursos: (S().recursos || []).filter((r) => r.activo !== false && (tipoRec === 'todos' || r.tipo === tipoRec)),
+      segExtra: '<div class="seg">' + [['profesional', 'Profesionales'], ['sala', 'Salas'], ['equipo', 'Equipos'], ['todos', 'Todos']].map(([k, l]) => '<button data-rec="' + k + '" class="' + (tipoRec === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>',
+    });
   }
 
   function turnoDetalle(id) {

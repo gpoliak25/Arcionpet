@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const CATALOGOS = { petshop: 'Pet shop', farmacia: 'Farmacia veterinaria' };
   const CATEGORIAS = {
-    petshop: ['Alimentos', 'Correas y accesorios', 'Ropa', 'Juguetes'],
+    petshop: ['Alimentos', 'Correas y accesorios', 'Ropa', 'Juguetes', 'Higiene y peluquería'],
     farmacia: ['Antiparasitarios', 'Medicamentos', 'Vacunas', 'Insumos sanitarios'],
   };
   const DIAS_AVISO_FARMACIA = 30;
