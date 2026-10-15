@@ -31,6 +31,7 @@
     ventas:          ['editar',   'editar',   'editar',   'todo'],
     turnos:          ['editar',   'todo',     'ninguno',  'ver'],
     peluqueria:      ['ninguno',  'todo',     'editar',   'ver'],
+    aliados:         ['editar',   'editar',   'ver',      'todo'],
     interconsultas:  ['todo',     'ninguno',  'ninguno',  'ver'],
     arcion:          ['ver',      'ver',      'ver',      'ver'],
     calidad:         ['ver',      'ninguno',  'ninguno',  'ver'],
@@ -47,6 +48,7 @@
     editarPrecios: ['administracion'],
     cambiarModelo: ['administracion'], // modelo activo y reentrenamiento, con auditoría
     configurar: ['administracion'],
+    verificarAliado: ['administracion'], // verificar o suspender aliados
   };
 
   function nivel(rol, modulo) {

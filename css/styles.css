@@ -515,6 +515,13 @@ select.asig { border: 1px solid var(--line); border-radius: 8px; padding: 4px 6p
 .conv-list .conv .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-list .conv .s { font-size: 12px; color: var(--muted); }
 .amsg a.ref { color: inherit; font-weight: 600; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+/* Aliados */
+.aliados-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.aliado { cursor: pointer; transition: border-color .15s; }
+.aliado:hover { border-color: var(--green); }
+.aliado.off { opacity: .6; }
+.al-foto { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; margin-bottom: 10px; }
+.al-msg { white-space: pre-wrap; font: inherit; font-size: 13px; background: var(--line-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; }
 /* Matriz de confusión */
 table.mini { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 table.mini th, table.mini td { padding: 9px 10px; border: 1px solid var(--line); text-align: center; font-size: 14px; }

@@ -359,6 +359,28 @@
         return s;
       },
     },
+    {
+      de: 20, a: 21, descripcion: 'Aliados: directorio de servicios de terceros, verificación, recomendaciones al tutor y valoraciones',
+      up(s) {
+        const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(12, 0, 0, 0); return d.toISOString(); };
+        const doc = (detalle, venceDias) => ({ detalle, vence: venceDias == null ? null : dia(venceDias).slice(0, 10) });
+        const AL = (id, nombre, tipo, zona, n, extra) => Object.assign({ id, nombre, tipo, zona, telefono: '11 5555-01' + n, email: 'contacto' + n + '@example.com', horarios: 'Lunes a viernes de 8 a 18', especies: ['Canino'], tamanos: ['chico', 'mediano', 'grande'], condiciones: [], precioDesde: null, precioDetalle: '', acuerdoComercial: '', fotos: [], documentos: {}, estado: 'pendiente', origen: 'clinica', creado: dia(-90) }, extra);
+        s.aliados = [
+          AL('al1', 'Paseos Palermo (ejemplo)', 'paseador', 'Palermo', '01', { condiciones: ['senior', 'reactivo'], precioDesde: 6000, precioDetalle: 'por paseo de una hora', documentos: { seguro: doc('Póliza RC 0001 (ejemplo)', 200), referencias: doc('3 referencias de tutores verificadas') }, estado: 'verificado', verificacion: { fecha: dia(-60), por: 'u-adm' } }),
+          AL('al2', 'Guardería Patitas (ejemplo)', 'guarderia', 'Belgrano', '02', { tamanos: ['chico', 'mediano'], condiciones: ['cachorro', 'medicacion'], precioDesde: 15000, precioDetalle: 'por día', acuerdoComercial: '10 % de descuento para pacientes de la clínica', documentos: { habilitacion: doc('Habilitación municipal 123/2025 (ejemplo)', 300), seguro: doc('Póliza RC 0002 (ejemplo)', 120) }, estado: 'verificado', verificacion: { fecha: dia(-45), por: 'u-adm' } }),
+          AL('al3', 'Hotel Michi Feliz (ejemplo)', 'hotel', 'Caballito', '03', { especies: ['Felino', 'Canino'], tamanos: ['chico'], condiciones: ['senior', 'medicacion'], precioDesde: 18000, precioDetalle: 'por noche', horarios: 'Todos los días, ingresos de 9 a 20', documentos: { habilitacion: doc('Habilitación municipal 456/2024 (ejemplo)', 150), seguro: doc('Póliza RC 0003 (ejemplo)', 90) }, estado: 'verificado', verificacion: { fecha: dia(-30), por: 'u-adm' } }),
+          AL('al4', 'Traslados Mascota Segura (ejemplo)', 'transporte', 'CABA y zona norte', '04', { especies: ['Canino', 'Felino'], tamanos: ['chico', 'mediano', 'grande', 'gigante'], condiciones: ['post_quirurgico', 'senior'], precioDesde: 9000, precioDetalle: 'por viaje dentro de CABA', documentos: { habilitacion: doc('Habilitación de transporte (ejemplo)', 400) } }),
+          AL('al5', 'Adiestramiento Positivo (ejemplo)', 'adiestrador', 'Núñez', '05', { condiciones: ['reactivo', 'cachorro'], precioDesde: 20000, precioDetalle: 'por clase', documentos: { seguro: doc('Póliza RC 0005 (ejemplo)', 100), referencias: doc('Referencias de 2 clínicas') }, estado: 'suspendido', suspension: { fecha: dia(-10), por: 'u-adm', motivo: 'Dos quejas de tutores en revisión' } }),
+          AL('alr1', 'Cuidadores Norte (ejemplo)', 'cuidador', 'Vicente López', '06', { especies: ['Canino', 'Felino'], condiciones: ['senior', 'medicacion', 'post_quirurgico'], precioDesde: 12000, precioDetalle: 'por visita', documentos: { seguro: doc('Póliza RC 0006 (ejemplo)', 250), referencias: doc('Referencias verificadas por la sede') }, estado: 'verificado', origen: 'red', sede: 'Clínica Norte (EISPLUS)' }),
+        ];
+        const pac = (id) => (s.pacientes || []).find((p) => p.id === id);
+        s.aliadoRecomendaciones = [];
+        if (pac('p5')) s.aliadoRecomendaciones.push({ id: 'ar1', fecha: dia(-20), pacienteId: 'p5', tutorId: pac('p5').tutorId, aliadoId: 'al1', motivo: 'Paseos tranquilos y cortos por su cardiopatía.', canal: 'whatsapp', texto: '', por: 'u-vet', concretada: true, fechaConcretada: dia(-15), valoracion: { puntaje: 5, comentario: 'Muy atento con Rocky.', fecha: dia(-8) }, consentimiento: { otorgado: true, fecha: dia(-20), medio: 'verbal', alcance: 'Nombre de la mascota y que necesita paseos cortos', registradoPor: 'u-vet' }, compartidos: [] });
+        if (pac('p4')) s.aliadoRecomendaciones.push({ id: 'ar2', fecha: dia(-5), pacienteId: 'p4', tutorId: pac('p4').tutorId, aliadoId: 'al2', motivo: 'Guardería durante la recuperación, con seguimiento.', canal: 'email', texto: '', por: 'u-vet', concretada: false, valoracion: null, consentimiento: null, compartidos: [] });
+        return s;
+      },
+      down(s) { delete s.aliados; delete s.aliadoRecomendaciones; return s; },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;
