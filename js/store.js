@@ -173,10 +173,16 @@
     return n;
   }
 
-  function qaStats() {
-    const ev = S.evaluaciones;
-    const coinc = ev.filter((q) => q.veredicto === 'coincide').length;
-    return { total: ev.length, coinciden: coinc, discrepancias: ev.length - coinc, pct: ev.length ? Math.round(coinc / ev.length * 100) : 0 };
+  /* Un solo cálculo de concordancia para Control de calidad y Analítica (opcionalmente, solo las evaluaciones de un período). */
+  const qaStats = (filtro) => Dominio.calidad.metricas(filtro ? S.evaluaciones.filter(filtro) : S.evaluaciones);
+  /* Filas del dataset de control de calidad (se anonimizan al exportar). */
+  function filasCalidad() {
+    return S.evaluaciones.map((q) => {
+      const e = estudio(q.estudioId) || {}, p = paciente(e.pacienteId) || {};
+      return { fecha: q.fecha, estudioId: q.estudioId, pacienteId: e.pacienteId, especie: p.especie, edadAnios: p.nacimiento ? Math.floor(daysBetween(p.nacimiento, q.fecha) / 365.25) : null, tipo: e.tipo, proyeccion: e.proyeccion,
+        modeloVersion: e.modelo ? e.modelo.version : '', ia: q.ia, probPatologia: e.probPatologia, veredicto: q.veredicto, claseReal: Dominio.calidad.claseReal(q), hallazgos: q.hallazgos || [], vetId: q.vetId, vet: q.vet,
+        imagenRef: e.imagenRef, etiquetaDataset: e.imagenRef && window.UI && UI.refTest ? (UI.refTest(e) || {}).clase || '' : '' };
+    });
   }
 
   /* ---------- Inventario ---------- */
@@ -498,12 +504,13 @@
       save(); return inf;
     },
     guardarTexto(iid, texto) { byId('informes', iid).texto = texto; save(); },
-    firmarInforme(iid, { texto, veredicto, correccion }) {
+    firmarInforme(iid, { texto, veredicto, correccion, claseReal, hallazgos }) {
       const inf = byId('informes', iid), e = estudio(inf.estudioId);
       const u = usuario(), ahora = new Date().toISOString();
       // se congela el resultado y la versión del modelo: no cambian aunque después se cambie el modelo activo
       Object.assign(inf, { texto, estado: 'firmado', firmadoPor: u.nombre, firmadoPorId: u.id, matricula: u.matricula || '', fechaFirma: ahora, iaFirmada: G().congelarIA(e, ahora) });
-      S.evaluaciones.push({ id: uid('q'), estudioId: e.id, fecha: ahora, ia: e.resultado, veredicto, correccion: correccion || null, vet: u.nombre });
+      const real = veredicto === 'coincide' && e.resultado !== 'incierto' ? e.resultado : (claseReal || null);
+      S.evaluaciones.push({ id: uid('q'), estudioId: e.id, fecha: ahora, ia: e.resultado, veredicto, correccion: correccion || null, claseReal: real, hallazgos: hallazgos || [], vet: u.nombre, vetId: u.id });
       save(); return inf;
     },
     /* Descartar un borrador es una baja lógica: queda registrado y se puede volver a generar. */
@@ -560,6 +567,6 @@
     veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
-    triage, notificaciones, qaStats, hemoAlertas, RES_LABEL, A,
+    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, RES_LABEL, A,
   };
 })();

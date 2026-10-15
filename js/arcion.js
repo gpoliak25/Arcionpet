@@ -174,7 +174,7 @@
     // Calidad
     if (has(t, 'concordancia', 'calidad', 'precision', 'acierta', 'discrepan')) { if (!Store.puede('calidad')) return sinPermiso('calidad');
       const st = Store.qaStats();
-      return 'La concordancia IA–veterinario es de <b>' + st.pct + '%</b> sobre ' + st.total + ' estudios evaluados, con ' + st.discrepancias + ' discrepancia' + (st.discrepancias === 1 ? '' : 's') + '.' + link('#/calidad', 'Ver control de calidad');
+      return 'La concordancia IA–veterinario es de <b>' + st.pct + '%</b> sobre ' + st.total + ' estudios evaluados, con ' + st.discrepancias + ' discrepancia' + (st.discrepancias === 1 ? '' : 's') + '.' + (st.muestraChica ? ' Ojo: con menos de ' + Dominio.calidad.N_MINIMO + ' evaluaciones el porcentaje es orientativo.' : '') + link('#/calidad', 'Ver control de calidad');
     }
 
     // Paciente puntual
