@@ -352,8 +352,12 @@ select.filter { border: 1px solid var(--line); border-radius: 10px; padding: 8px
 @keyframes tin { from { opacity: 0; transform: translateY(-8px); } }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
-.tabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.tabs button.on { color: var(--text); border-bottom-color: var(--green); font-weight: 600; }
+.tabs button, .tabs a { border: 0; background: none; padding: 10px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; font: inherit; }
+.tabs button.on, .tabs a.on { color: var(--text); border-bottom-color: var(--green); font-weight: 600; }
+.pel-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.pel-fotos figure { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
+.pel-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.pel-fotos figcaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px; font-size: 12px; color: var(--muted); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
