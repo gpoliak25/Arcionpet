@@ -39,6 +39,7 @@
       (P('pacientes') ? kpi('paw', '', 'Pacientes', s.pacientes.length, 'propios y de la red', '#/pacientes') : '') +
       (P('turnos') ? kpi('calendar', '', 'Turnos de hoy', hoy.length, pendPortal.length ? pendPortal.length + ' pedido' + (pendPortal.length > 1 ? 's' : '') + ' del portal' : 'sin pedidos pendientes', '#/turnos') : '') +
       (P('informes') ? kpi('file', 'amber', Store.puedeAccion('firmarInforme') ? 'Informes para firmar' : 'Informes en borrador', borradores.length, '', '#/informes') : '') +
+      (P('ventas') && Store.rol() !== 'veterinario' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); const r = Dominio.ventas.resumen(s.ventas, d.toISOString()); return kpi('cart', 'violet', 'Ventas de hoy', '$ ' + Math.round(r.total).toLocaleString('es-AR'), r.cantidad + (r.cantidad === 1 ? ' venta' : ' ventas'), '#/ventas'); })() : '') +
       (P('interconsultas') ? kpi('chat', 'violet', 'Interconsultas activas', icActivas.length, '', '#/interconsultas') : '') +
       '</div>' +
       '<div class="grid two">' + (P('turnos') ?

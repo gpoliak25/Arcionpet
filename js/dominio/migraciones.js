@@ -105,6 +105,20 @@
         return s;
       },
     },
+    {
+      de: 11, a: 12, descripcion: 'Ventas, recetas veterinarias electrónicas registradas y matrícula del veterinario',
+      up(s) {
+        s.ventas = [];
+        s.recetas = [];
+        s.usuarios = s.usuarios.map((u) => (u.rol === 'veterinario' && !u.matricula ? Object.assign({}, u, { matricula: 'MP 4821' }) : u));
+        return s;
+      },
+      down(s) {
+        delete s.ventas; delete s.recetas;
+        s.usuarios = s.usuarios.map((u) => { const c = Object.assign({}, u); delete c.matricula; return c; });
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

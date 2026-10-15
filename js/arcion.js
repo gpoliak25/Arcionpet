@@ -8,7 +8,7 @@
   const link = (href, label) => '<a class="btn sm go" href="' + href + '">' + label + ' →</a>';
   const list = (items) => '<ul>' + items.map((i) => '<li>' + i + '</li>').join('') + '</ul>';
 
-  const NOMBRE_MODULO = { inventario: 'inventario', hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
+  const NOMBRE_MODULO = { ventas: 'ventas', inventario: 'inventario', hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
   const history = [];
   const mounts = new Set();
 
@@ -65,6 +65,18 @@
       return '¡Hola, ' + esc(S().usuario.nombre) + '! Soy <b>ARCION</b>. Puedo responder dudas de uso del sistema y encontrar datos de pacientes, turnos, estudios y stock. ¿En qué te ayudo?';
     if (has(t, 'que podes', 'que puedes', 'ayuda', 'que sabes', 'como funcionas'))
       return 'Puedo ayudarte con:' + list(['<b>Dudas de uso</b>: cómo firmar un informe, derivar, cargar un estudio, dar un turno…', '<b>Pacientes</b>: “datos de Luna”, “mascotas de Pérez”', '<b>Agenda</b>: “turnos de hoy”, “turnos de mañana”, “turnos de la semana”', '<b>Diagnóstico</b>: “informes sin firmar”, “estudios urgentes”, “derivaciones pendientes”', '<b>Stock</b>: “stock de plasma”, “qué vence esta semana”', '<b>Indicadores</b>: “concordancia de la IA”, “cupo de interconsultas”']);
+
+    // Ventas
+    if (has(t, 'venta', 'vendi', 'facturac', 'recaud', 'cobr')) {
+      if (!Store.puede('ventas')) return sinPermiso('ventas');
+      const d = new Date(); d.setHours(0, 0, 0, 0);
+      const semana = has(t, 'semana');
+      if (semana) d.setDate(d.getDate() - 6);
+      const r = Dominio.ventas.resumen(S().ventas, d.toISOString());
+      if (!r.cantidad) return 'No hay ventas ' + (semana ? 'en los últimos 7 días' : 'hoy') + ' todavía.' + link('#/ventas', 'Ir a Ventas');
+      return (semana ? 'En los últimos 7 días' : 'Hoy') + ' se registraron <b>' + r.cantidad + '</b> venta' + (r.cantidad > 1 ? 's' : '') + ' por <b>' + pesos(r.total) + '</b> (ticket promedio ' + pesos(r.promedio) + ').' +
+        list(Object.entries(r.porMedio).sort((a, b) => b[1] - a[1]).map(([m, v]) => Dominio.ventas.MEDIOS[m] + ': ' + pesos(v))) + link('#/ventas', 'Ver ventas');
+    }
 
     // Inventario (pet shop y farmacia)
     const prodInv = S().productos ? productoEn(t) : null;

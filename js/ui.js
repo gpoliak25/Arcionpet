@@ -44,7 +44,9 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const pad = (n) => String(n).padStart(2, '0');
-  const fDate = (iso) => { const d = new Date(iso); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); };
+  // Las fechas sin hora ("2026-10-15") se leen como fecha local: new Date() las tomaría como medianoche UTC (el día anterior en Argentina).
+  const aFecha = (s) => (typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) : new Date(s));
+  const fDate = (iso) => { const d = aFecha(iso); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); };
   const fTime = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
   const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
   const fShort = (iso) => { const d = new Date(iso); return DIAS[d.getDay()] + ' ' + pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + ' · ' + fTime(iso); };

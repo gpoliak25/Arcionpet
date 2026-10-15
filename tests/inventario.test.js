@@ -128,6 +128,13 @@ test('valor del stock vendible a precio de venta', () => {
   assert.equal(I.valorStock(b.productos, b.lotes, HOY), 7 * 9000 + 1 * 7000 + 6 * 5000);
 });
 
+test('las fechas sin hora se toman como fecha local (no UTC)', () => {
+  const hoy = new Date(2026, 9, 15, 8, 0); // 15/10 a las 8 de la mañana, hora local
+  assert.equal(I.diasHasta('2026-10-15', hoy), 0);
+  assert.equal(I.diasHasta('2026-10-14', hoy), -1);
+  assert.equal(I.diasHasta('2026-11-14', hoy), 30);
+});
+
 test('validación de producto', () => {
   const ok = { catalogo: 'petshop', categoria: 'Juguetes', nombre: 'Pelota', precio: 3000, stockMinimo: 2 };
   assert.deepEqual(I.validarProducto(ok, []), []);
