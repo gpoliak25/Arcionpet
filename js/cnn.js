@@ -1,4 +1,4 @@
-/* Modelos CNN del TP de Aprendizaje Automático, convertidos de Keras a TensorFlow.js.
+/* Modelos CNN de clasificación de radiografías de tórax, convertidos de Keras a TensorFlow.js.
    Clasificación binaria de radiografías de tórax: ok / patologica (salida softmax de 2 clases).
    - transfer_mobilenetv2: MobileNetV2 (ImageNet) + fine-tuning desde la capa 140. Mejor AUC del TP.
    - transfer_fase1: MobileNetV2 con la base congelada (solo se entrenó la cabeza).
@@ -8,22 +8,22 @@
   const SIZE = 224;
   const CATALOGO = {
     ensamble: {
-      nombre: 'Ensamble MobileNetV2 (fine-tuning + fase 1) con TTA', miembros: ['transfer_mobilenetv2', 'transfer_fase1'], camLayer: 'out_relu', reentrenable: false,
+      nombre: 'Ensamble MobileNetV2 (fine-tuning + fase 1) con TTA', version: 'ensamble-tta@1.0', miembros: ['transfer_mobilenetv2', 'transfer_fase1'], camLayer: 'out_relu', reentrenable: false,
       tp: {},
-      descripcion: 'Promedia la salida de los dos MobileNetV2 del TP, cada uno sobre la radiografía y su espejo horizontal (test-time augmentation). Elegido por validación: en el test detecta 27 de 30 patológicas con el umbral 0,30, contra 24 del modelo original.',
+      descripcion: 'Promedia la salida de los dos MobileNetV2, cada uno sobre la radiografía y su espejo horizontal (test-time augmentation). Elegido por validación: en el test detecta 27 de 30 patológicas con el umbral 0,30, contra 24 del modelo original.',
     },
     transfer_mobilenetv2: {
-      nombre: 'MobileNetV2 · transfer learning + fine-tuning', archivo: 'js/model/transfer_mobilenetv2.js', camLayer: 'out_relu', reentrenable: true,
+      nombre: 'MobileNetV2 · transfer learning + fine-tuning', version: 'mobilenetv2-finetune@1.0', archivo: 'js/model/transfer_mobilenetv2.js', camLayer: 'out_relu', reentrenable: true,
       tp: { auc: 0.747, accuracy: 0.701, precision: 0.75, recall: 0.5, umbralAjustado: { umbral: 0.3, accuracy: 0.672, precision: 0.6, recall: 0.8 } },
       descripcion: 'Base MobileNetV2 preentrenada en ImageNet; cabeza GAP → Dropout(0.3) → Dense(2). Fase 1 con la base congelada y fase 2 con fine-tuning desde la capa 140 (Adam 1e-5).',
     },
     transfer_fase1: {
-      nombre: 'MobileNetV2 · solo fase 1 (base congelada)', archivo: 'js/model/transfer_fase1.js', camLayer: 'out_relu', reentrenable: true,
+      nombre: 'MobileNetV2 · solo fase 1 (base congelada)', version: 'mobilenetv2-fase1@1.0', archivo: 'js/model/transfer_fase1.js', camLayer: 'out_relu', reentrenable: true,
       tp: { accuracy: 0.672, valAccuracy: 0.742 },
       descripcion: 'Misma arquitectura, entrenando solo la cabeza de clasificación (2.562 parámetros entrenables).',
     },
     cnn_desde_cero: {
-      nombre: 'CNN desde cero', archivo: 'js/model/cnn_desde_cero.js', camLayer: null, reentrenable: false,
+      nombre: 'CNN desde cero', version: 'cnn-cero@1.0', archivo: 'js/model/cnn_desde_cero.js', camLayer: null, reentrenable: false,
       tp: { auc: 0.446, accuracy: 0.448, precision: 0.448, recall: 1.0 },
       descripcion: '5 bloques Conv2D + BatchNorm + MaxPool (32-64-128-128-128) → GAP → Dense(256) → Dropout(0.5) → Dense(2). Con 308 imágenes de entrenamiento no logra generalizar.',
     },
@@ -130,7 +130,7 @@
     const p = probs.patologica;
     const resultado = p >= UMBRAL_PATOLOGICO ? 'patologico' : p >= UMBRAL_INCIERTO ? 'incierto' : 'normal';
     return {
-      resultado, confianza: Math.round(p * 100),
+      resultado, probPatologia: Math.round(p * 100), // probabilidad de la clase patológica, no la certeza del modelo
       hallazgos: resultado === 'normal' ? [] : [resultado === 'patologico' ? 'Patrón radiológico torácico compatible con patología' : 'Hallazgo torácico de significado incierto'],
     };
   }
@@ -313,6 +313,8 @@
       clave: k, catalogo: CATALOGO[k], activo: k === activo, cargado: !!ent, backend: tf.getBackend(),
       parametros: ent ? (ent.ensamble ? ent.miembros.reduce((a, m) => a + m.model.countParams(), 0) : ent.model.countParams()) : null, capas: ent ? ent.model.layers.length : null,
       reentrenado: ent ? ent.reentrenado || null : null, meta: ent ? ent.meta : null,
+      // versión que se guarda en cada estudio; si la capa final se reentrenó en la clínica, se agrega la fecha
+      version: CATALOGO[k].version + (ent && ent.reentrenado ? '+cabeza-' + String(ent.reentrenado.fecha).slice(0, 10) : ''),
     };
   }
 

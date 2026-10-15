@@ -14,7 +14,7 @@ test('los datos de ejemplo están en la versión base', () => {
 test('migrar lleva el estado a la versión actual', () => {
   const s = M.migrar(SEED);
   assert.equal(s.version, M.VERSION_ACTUAL);
-  assert.ok(Array.isArray(s.usuarios) && s.usuarios.length === 4);
+  assert.ok(Array.isArray(s.usuarios) && ['veterinario', 'recepcion', 'peluqueria', 'administracion'].every((r) => s.usuarios.some((u) => u.rol === r)));
   assert.equal(s.usuarioActivo, 'u-vet');
 });
 
@@ -35,6 +35,21 @@ test('los datos que cargó el usuario sobreviven a la migración', () => {
   const migrado = M.migrar(s);
   assert.ok(migrado.pacientes.some((p) => p.id === 'p-nuevo'));
   assert.deepEqual(M.revertir(migrado, M.VERSION_BASE), s);
+});
+
+test('v13: confianza pasa a probPatologia y vuelve exacta, con datos ficticios reversibles', () => {
+  const s = M.migrar(SEED, 12);
+  s.estudios[0].confianza = 37;
+  s.estudios[0].modelo = { clave: 'ensamble', nombre: 'Ensamble' };
+  s.tutores[0].email = 'propio@example.com'; // un email que ya era example.com no se toca al revertir
+  const v13 = M.migrar(s, 13);
+  assert.equal(v13.estudios[0].probPatologia, 37);
+  assert.ok(!('confianza' in v13.estudios[0]));
+  assert.equal(v13.estudios[0].modelo.version, 'ensamble-tta@1.0');
+  assert.ok(v13.tutores.every((t) => /^99\.100\.\d{3}$/.test(t.doc)), 'DNI ficticios');
+  assert.ok(v13.tutores.filter((t) => t.email).every((t) => /@example\.com$/.test(t.email)), 'emails en example.com');
+  assert.equal(v13.config.demoMode, false);
+  assert.deepEqual(M.revertir(v13, 12), JSON.parse(JSON.stringify(s)));
 });
 
 test('cada paso tiene up y down y las versiones son consecutivas', () => {

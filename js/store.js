@@ -52,7 +52,10 @@
   const paciente = (id) => byId('pacientes', id);
   const tutor = (id) => byId('tutores', id);
   const estudio = (id) => byId('estudios', id);
-  const informeDeEstudio = (eid) => S.informes.find((i) => i.estudioId === eid);
+  // los borradores descartados no cuentan (baja lógica)
+  const informeDeEstudio = (eid) => S.informes.find((i) => i.estudioId === eid && i.estado !== 'descartado');
+  const estudiosActivos = () => S.estudios.filter((e) => e.activo !== false);
+  const G = () => Dominio.seguridad;
 
   function edad(nac) {
     const n = new Date(nac), h = new Date();
@@ -65,10 +68,10 @@
   }
 
   /* ---------- Resultado de la CNN ----------
-     confianza = probabilidad de hallazgo patológico estimada por la red (1 − P(normal)), en %.
-     < 40 Normal · 40–69 Incierto · ≥ 70 Patológico (ver CNN.interpretar) */
+     probPatologia = probabilidad de la clase patológica según la red, en % (no es la certeza del modelo).
+     Los umbrales están en CNN.interpretar. */
   function nivelConfianza(e) {
-    const d = Math.abs(e.confianza - 50); // distancia al punto de máxima duda
+    const d = Math.abs(e.probPatologia - 50); // distancia al punto de máxima duda
     return d >= 35 ? 'alta' : d >= 20 ? 'media' : 'baja';
   }
 
@@ -110,13 +113,13 @@
       'SUGERENCIAS',
       sugerencia,
       '',
-      'Resultado IA: ' + RES_LABEL[e.resultado] + ' (' + e.confianza + '% probabilidad de patología). Borrador generado automáticamente: requiere revisión y firma del médico veterinario.',
+      'Resultado IA: ' + RES_LABEL[e.resultado] + ' (' + e.probPatologia + '% probabilidad de patología). Borrador generado automáticamente: requiere revisión y firma del médico veterinario.',
     ].join('\n');
   }
 
   /* ---------- Derivados ---------- */
   function triage() {
-    const rows = S.estudios
+    const rows = estudiosActivos()
       .filter((e) => e.resultado)
       .map((e) => {
         const inf = informeDeEstudio(e.id);
@@ -124,7 +127,7 @@
       })
       .filter((r) => !(r.inf && r.inf.estado === 'firmado'));
     rows.sort((a, b) => (a.prioridad === b.prioridad ? 0 : a.prioridad === 'urgente' ? -1 : 1) ||
-      (b.e.resultado === 'patologico') - (a.e.resultado === 'patologico') || b.espera - a.espera || b.e.confianza - a.e.confianza);
+      (b.e.resultado === 'patologico') - (a.e.resultado === 'patologico') || b.espera - a.espera || b.e.probPatologia - a.e.probPatologia);
     return rows;
   }
 
@@ -132,8 +135,19 @@
     return S.hemo.filter((u) => (u.estado === 'disponible' || u.estado === 'reservada') && daysBetween(new Date(), u.vence) <= 7 && daysBetween(new Date(), u.vence) >= 0);
   }
 
+  /* Alertas de seguridad clínica: estudios contradictorios y demoras respecto del SLA configurado. */
+  const contradicciones = () => G().contradicciones(S.estudios);
+  const demoras = () => G().demoras({ estudios: S.estudios, informes: S.informes, derivaciones: S.derivaciones, interconsultas: S.interconsultas }, (S.config || {}).sla);
+  const demoraDe = (tipo, id) => demoras().find((d) => d.tipo === tipo && d.id === id) || null;
+
   function notificaciones() {
     const n = [];
+    contradicciones().forEach((c) => {
+      const p = paciente(c.pacienteId) || {};
+      n.push({ id: 'n-ctr-' + c.estudios.join('-'), ic: 'alert', t: 'Estudios contradictorios del mismo día', s: (p.nombre || '') + ': uno Normal y otro Patológico', go: '#/estudios/' + c.estudios[0] });
+    });
+    const TXT = { triage: 'Urgente sin informe firmado', derivaciones: 'Derivación sin respuesta', interconsultas: 'Interconsulta sin respuesta' };
+    demoras().forEach((d) => n.push({ id: 'n-sla-' + d.id, ic: 'clock', t: TXT[d.tipo] + ' (SLA ' + d.limite + ' h)', s: 'Demora de ' + Math.round(d.horas) + ' h' + (d.asignadoA ? ' · ' + ((S.usuarios.find((u) => u.id === d.asignadoA) || {}).nombre || '') : ' · sin asignar'), go: d.tipo === 'triage' ? '#/triage' : '#/' + d.tipo }));
     S.turnos.filter((t) => t.estado === 'pendiente').forEach((t) => {
       const p = paciente(t.pacienteId);
       n.push({ id: 'n-' + t.id, ic: 'globe', t: 'Pedido de turno desde el Portal Cliente', s: p.nombre + ' · ' + t.tipo, go: '#/turnos' });
@@ -220,23 +234,17 @@
     cambiarUsuario(id) { if (S.usuarios.some((u) => u.id === id)) { S.usuarioActivo = id; save(); } },
     addPaciente(p, t) {
       if (t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); p.tutorId = t.id; }
-      p.id = uid('p'); S.pacientes.push(p); save(); return p;
+      p.id = uid('p'); p.activo = true; S.pacientes.push(p); save(); return p;
     },
     updatePaciente(id, data) { Object.assign(paciente(id), data); save(); },
-    deletePaciente(id) {
-      S.pacientes = S.pacientes.filter((p) => p.id !== id);
-      const eids = S.estudios.filter((e) => e.pacienteId === id).map((e) => e.id);
-      S.estudios = S.estudios.filter((e) => e.pacienteId !== id);
-      S.informes = S.informes.filter((i) => !eids.includes(i.estudioId));
-      S.derivaciones = S.derivaciones.filter((d) => !eids.includes(d.estudioId));
-      S.turnos = S.turnos.filter((t) => t.pacienteId !== id);
-      save();
-    },
+    /* Baja lógica: el paciente y toda su historia clínica se conservan. */
+    bajaPaciente(id, motivo) { Object.assign(paciente(id), { activo: false, fechaBaja: new Date().toISOString(), motivoBaja: motivo || '' }); save(); },
+    reactivarPaciente(id) { const p = paciente(id); p.activo = true; delete p.fechaBaja; delete p.motivoBaja; save(); },
     importarDeRed(rid) {
       const r = S.redPacientes.find((x) => x.id === rid);
       let t = S.tutores.find((x) => x.doc === r.tutor.doc);
       if (!t) { t = Object.assign({ id: uid('t'), tel: '', email: '' }, { tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, r.tutor); S.tutores.push(t); }
-      const p = { id: uid('p'), nombre: r.nombre, especie: r.especie, raza: r.raza, nacimiento: r.nacimiento, sexo: r.sexo, peso: r.peso, tutorId: t.id, origen: 'red' };
+      const p = { id: uid('p'), nombre: r.nombre, especie: r.especie, raza: r.raza, nacimiento: r.nacimiento, sexo: r.sexo, peso: r.peso, tutorId: t.id, origen: 'red', activo: true };
       S.pacientes.push(p);
       S.redPacientes = S.redPacientes.filter((x) => x.id !== rid);
       save(); return p;
@@ -248,25 +256,36 @@
     reactivarTutor(id) { const t = byId('tutores', id); t.activo = true; delete t.fechaBaja; save(); },
     addTurno(t) { t.id = uid('tu'); S.turnos.push(t); save(); return t; },
     setTurno(id, estado) { byId('turnos', id).estado = estado; save(); },
-    addEstudio(e) { e.id = uid('e'); e.resultado = null; e.confianza = null; e.hallazgos = []; e.derivado = false; S.estudios.push(e); save(); return e; },
-    /* res = { resultado, confianza, hallazgos, probs, modelo } calculado por la CNN */
+    addEstudio(e) {
+      const p = paciente(e.pacienteId) || {};
+      Object.assign(e, { id: uid('e'), resultado: null, probPatologia: null, hallazgos: [], derivado: false, activo: true, asignadoA: null, fueraDeAlcance: G().fueraDeAlcance(e.tipo, p.especie) });
+      S.estudios.push(e); save(); return e;
+    },
+    /* res = { resultado, probPatologia, hallazgos, probs, modelo } calculado por la CNN.
+       Con el informe firmado, el resultado queda congelado: no se vuelve a analizar. */
     aplicarAnalisis(id, res) {
       const e = estudio(id);
       if (!e) return null;
+      if (!G().puedeReanalizar(id, S.informes)) return e;
       Object.assign(e, res, { analizadoEn: new Date().toISOString() });
       const inf = informeDeEstudio(id);
       if (inf && inf.estado === 'borrador' && !inf.texto) inf.nivel = nivelConfianza(e);
       save(); return e;
     },
-    deleteEstudio(id) {
-      S.estudios = S.estudios.filter((e) => e.id !== id);
-      S.informes = S.informes.filter((i) => i.estudioId !== id);
-      S.derivaciones = S.derivaciones.filter((d) => d.estudioId !== id);
+    /* Baja lógica del estudio. Bloqueada si tiene informe firmado o derivación. */
+    bajaEstudio(id, motivo) {
+      const no = G().motivoNoBaja(id, S.informes, S.derivaciones);
+      if (no) throw new Error(no + ': no se puede dar de baja');
+      Object.assign(estudio(id), { activo: false, fechaBaja: new Date().toISOString(), motivoBaja: motivo || '', usuarioBaja: S.usuarioActivo });
       save();
     },
+    asignar(coleccion, id, usuarioId) { byId(coleccion, id).asignadoA = usuarioId || null; save(); },
+    setDemo(on) { S.config.demoMode = !!on; save(); },
+    setConfig(datos) { Object.assign(S.config, datos); save(); },
+    auditar(accion, detalle) { S.auditoria.push(Object.assign({ id: uid('au'), fecha: new Date().toISOString(), usuario: S.usuarioActivo, accion }, detalle)); save(); },
     generarInforme(eid) {
       const e = estudio(eid);
-      let inf = informeDeEstudio(eid);
+      let inf = informeDeEstudio(eid) || S.informes.find((i) => i.estudioId === eid && i.estado === 'descartado');
       if (inf && inf.estado === 'firmado') return inf;
       if (!inf) { inf = { id: uid('i'), estudioId: eid }; S.informes.push(inf); }
       Object.assign(inf, { fecha: new Date().toISOString(), estado: 'borrador', nivel: nivelConfianza(e), texto: borradorInforme(e) });
@@ -275,11 +294,14 @@
     guardarTexto(iid, texto) { byId('informes', iid).texto = texto; save(); },
     firmarInforme(iid, { texto, veredicto, correccion }) {
       const inf = byId('informes', iid), e = estudio(inf.estudioId);
-      Object.assign(inf, { texto, estado: 'firmado', firmadoPor: S.usuario.completo, fechaFirma: new Date().toISOString() });
-      S.evaluaciones.push({ id: uid('q'), estudioId: e.id, fecha: new Date().toISOString(), ia: e.resultado, veredicto, correccion: correccion || null, vet: S.usuario.completo });
+      const u = usuario(), ahora = new Date().toISOString();
+      // se congela el resultado y la versión del modelo: no cambian aunque después se cambie el modelo activo
+      Object.assign(inf, { texto, estado: 'firmado', firmadoPor: u.nombre, firmadoPorId: u.id, matricula: u.matricula || '', fechaFirma: ahora, iaFirmada: G().congelarIA(e, ahora) });
+      S.evaluaciones.push({ id: uid('q'), estudioId: e.id, fecha: ahora, ia: e.resultado, veredicto, correccion: correccion || null, vet: u.nombre });
       save(); return inf;
     },
-    deleteInforme(id) { S.informes = S.informes.filter((i) => i.id !== id); save(); },
+    /* Descartar un borrador es una baja lógica: queda registrado y se puede volver a generar. */
+    descartarInforme(id) { Object.assign(byId('informes', id), { estado: 'descartado', fechaDescarte: new Date().toISOString(), usuarioDescarte: S.usuarioActivo }); save(); },
     derivar(eid, motivo) {
       const e = estudio(eid); e.derivado = true;
       const d = { id: uid('d'), estudioId: eid, fecha: new Date().toISOString(), motivo, de: S.usuario.completo, a: null, estado: 'pendiente', respuesta: null };
@@ -317,7 +339,9 @@
   const puedeAccion = (accion) => Dominio.permisos.puedeAccion(rol(), accion);
 
   window.Store = {
-    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion, producto, catalogosVisibles, inventarioAlertas,
+    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
+    estudiosActivos, contradicciones, demoras, demoraDe, get demo() { return !!(S.config && S.config.demoMode); },
+    veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario'), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
     triage, notificaciones, qaStats, hemoAlertas, RES_LABEL, A,

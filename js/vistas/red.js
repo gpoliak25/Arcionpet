@@ -10,10 +10,10 @@
     const mes = new Date().toISOString().slice(0, 7);
     const html = pageHead('headset', 'Interconsultas EISPLUS', 'Consultá casos con el equipo central de veterinarios de soporte de la red.', '<button class="btn violet" id="btn-nueva">' + icon('headset') + 'Nueva interconsulta</button>', 'violet') +
       '<div class="card card-pad" style="margin-bottom:20px"><div style="display:flex;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px"><span>' + esc(pk.nombre) + ' · ' + mes + ' (se renueva el 1° de cada mes)</span><span class="muted">' + pk.usadas + ' / ' + pk.total + ' · quedan ' + (pk.total - pk.usadas) + '</span></div><div class="progress violet"><div style="width:' + (pk.usadas / pk.total * 100) + '%"></div></div></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Asunto</th><th>Paciente</th><th>Estado</th><th>Soporte</th><th>Actualizada</th></tr></thead><tbody>' +
-      list.map((i) => { const p = Store.paciente(i.pacienteId); const n = i.mensajes.length; return '<tr class="clickable" data-go="#/interconsultas/' + i.id + '"><td><div class="' + (i.noLeida ? 'strong' : '') + '">' + esc(i.asunto) + (i.noLeida ? ' <span class="badge b-violet">nuevo</span>' : '') + '</div><div class="small muted">' + (i.urgente ? '<span class="badge b-patologico" style="margin-right:6px">Urgente</span>' : '') + esc(i.mensajes[0].de) + ' · ' + n + (n === 1 ? ' mensaje' : ' mensajes') + '</div></td><td>' + (p ? esc(p.nombre) : '—') + '</td><td><span class="badge ' + IC_ESTADO[i.estado][1] + '">' + IC_ESTADO[i.estado][0] + '</span></td><td>' + (i.soporte ? '<span style="color:var(--violet)">' + icon('headset') + '</span> ' + esc(i.soporte) : '<span class="muted">Sin asignar</span>') + '</td><td class="nowrap">' + fShort(i.actualizada) + '</td></tr>'; }).join('') +
+      '<div class="table-wrap"><table><thead><tr><th>Asunto</th><th>Paciente</th><th>Estado</th><th>Soporte</th><th>Asignado a</th><th>Actualizada</th></tr></thead><tbody>' +
+      list.map((i) => { const p = Store.paciente(i.pacienteId); const n = i.mensajes.length; return '<tr class="clickable" data-go="#/interconsultas/' + i.id + '"><td><div class="' + (i.noLeida ? 'strong' : '') + '">' + esc(i.asunto) + (i.noLeida ? ' <span class="badge b-violet">nuevo</span>' : '') + '</div><div class="small muted">' + (i.urgente ? '<span class="badge b-patologico" style="margin-right:6px">Urgente</span>' : '') + esc(i.mensajes[0].de) + ' · ' + n + (n === 1 ? ' mensaje' : ' mensajes') + '</div></td><td>' + (p ? esc(p.nombre) : '—') + '</td><td><span class="badge ' + IC_ESTADO[i.estado][1] + '">' + IC_ESTADO[i.estado][0] + '</span></td><td>' + (i.soporte ? '<span style="color:var(--violet)">' + icon('headset') + '</span> ' + esc(i.soporte) : '<span class="muted">Sin asignar</span>') + '</td><td>' + VC.asignadoSelect('interconsultas', i.id, i.asignadoA) + '</td><td class="nowrap">' + fShort(i.actualizada) + VC.demoraBadge('interconsultas', i.id) + '</td></tr>'; }).join('') +
       '</tbody></table></div>';
-    return { html, mount(root) { on(root, '[data-go]', 'click', (el) => go(el.dataset.go)); root.querySelector('#btn-nueva').onclick = () => interconsultaForm(); } };
+    return { html, mount(root) { VC.bindAsignados(root); on(root, '[data-go]', 'click', (el) => go(el.dataset.go)); root.querySelector('#btn-nueva').onclick = () => interconsultaForm(); } };
   }
   function interconsultaForm(pid, asunto) {
     const pk = S().pack;
@@ -37,7 +37,9 @@
     });
   }
   const SOPORTE = ['Dra. Paula Ferrari', 'Dr. Andrés Molina'];
+  /* Respuesta simulada del soporte: solo en modo demo. */
   function simularSoporte(id) {
+    if (!Store.demo) return;
     setTimeout(() => {
       const ic = S().interconsultas.find((x) => x.id === id);
       if (!ic || ic.estado === 'cerrada') return;
@@ -50,11 +52,12 @@
     }, 3500);
   }
   function interconsultaDetalle(id) {
+    setTimeout(() => VC.bindAsignados(document.getElementById('view')), 0);
     const ic = S().interconsultas.find((x) => x.id === id);
     if (!ic) return { html: empty('chat', 'Interconsulta no encontrada', ''), mount() {} };
     const p = Store.paciente(ic.pacienteId);
     const html = '<a href="#/interconsultas" class="btn ghost sm" style="margin-bottom:12px">← Interconsultas</a>' +
-      pageHead('headset', esc(ic.asunto), (p ? esc(p.nombre) + ' · ' : '') + '<span class="badge ' + IC_ESTADO[ic.estado][1] + '">' + IC_ESTADO[ic.estado][0] + '</span>' + (ic.urgente ? ' <span class="badge b-patologico">Urgente</span>' : '') + (ic.soporte ? ' · Soporte: ' + esc(ic.soporte) : ''),
+      pageHead('headset', esc(ic.asunto), (p ? esc(p.nombre) + ' · ' : '') + '<span class="badge ' + IC_ESTADO[ic.estado][1] + '">' + IC_ESTADO[ic.estado][0] + '</span>' + (ic.urgente ? ' <span class="badge b-patologico">Urgente</span>' : '') + (ic.soporte ? ' · Soporte: ' + esc(ic.soporte) : '') + (ic.estado !== 'cerrada' ? ' · Asignado a: ' + VC.asignadoSelect('interconsultas', ic.id, ic.asignadoA) + VC.demoraBadge('interconsultas', ic.id) : ''),
         ic.estado !== 'cerrada' ? '<button class="btn" id="btn-close">' + icon('check') + 'Cerrar consulta</button>' : '', 'violet') +
       '<div class="card card-pad"><div class="thread">' + ic.mensajes.map((m) => '<div class="msg ' + m.rol + '"><div class="meta">' + esc(m.de) + ' · ' + fShort(m.fecha) + '</div>' + esc(m.texto) + '</div>').join('') +
       (ic.estado === 'cola' ? '<div class="small muted" style="text-align:center">Esperando que un veterinario de soporte tome el caso…</div>' : '') + '</div>' +
@@ -79,7 +82,7 @@
       const e = Store.estudio(q.estudioId) || {}, p = Store.paciente(e.pacienteId) || {};
       return {
         fecha: q.fecha.slice(0, 10), estudio_id: q.estudioId, paciente: p.nombre, especie: p.especie, tipo: e.tipo, proyeccion: e.proyeccion, motivo: e.motivo,
-        ia_modelo: e.modelo ? e.modelo.clave : '', ia_resultado: q.ia, ia_probabilidad_patologia: e.confianza, veredicto: q.veredicto, correccion: q.correccion || '', imagen_dataset: e.imagenRef || '', etiqueta_dataset: (UI.refTest(e) || {}).clase || '',
+        ia_modelo: e.modelo ? e.modelo.clave : '', ia_modelo_version: e.modelo ? e.modelo.version || '' : '', ia_resultado: q.ia, ia_probabilidad_patologia: e.probPatologia, veredicto: q.veredicto, correccion: q.correccion || '', imagen_dataset: e.imagenRef || '', etiqueta_dataset: (UI.refTest(e) || {}).clase || '',
         etiqueta_final: q.veredicto === 'coincide' ? q.ia : (q.correccion || ''), veterinario: q.vet,
       };
     });
@@ -116,7 +119,7 @@
 
   /* =========================================================== ANALÍTICA */
   function analitica() {
-    const s = S(), est = s.estudios, st = Store.qaStats(), now = new Date();
+    const s = S(), est = Store.estudiosActivos(), st = Store.qaStats(), now = new Date();
     const esteMes = est.filter((e) => { const d = new Date(e.fecha); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).length;
     const pendDer = s.derivaciones.filter((d) => d.estado === 'pendiente').length;
     const cnt = (r) => est.filter((e) => e.resultado === r).length;
@@ -185,18 +188,19 @@
         '<td>' + (c.tp.auc != null ? num(c.tp.auc) : k === 'ensamble' ? '<span class="small muted">nuevo</span>' : '—') + '</td>' +
         '<td class="strong">' + (r ? num(r.auc) : evalEnCurso[k] ? '<span class="small muted" id="ev-' + k + '">evaluando…</span>' : '<span class="small muted">pendiente</span>') + '</td>' +
         '<td>' + (r ? pct(r.m50.accuracy) : '—') + '</td><td>' + (r ? pct(r.m30.recall) : '—') + '</td><td>' + (r ? pct(r.m30.precision) : '—') + '</td>' +
-        '<td class="actions">' + (k === act ? '<span class="badge b-normal">En uso</span>' : '<button class="btn sm" data-usar="' + k + '">Usar</button>') + '</td></tr>';
+        '<td class="actions">' + (k === act ? '<span class="badge b-normal">En uso</span>' : Store.puedeAccion('cambiarModelo') ? '<button class="btn sm" data-usar="' + k + '">Usar</button>' : '') + '</td></tr>';
     }).join('');
     const r = evals[act], mi = CNN.info(act);
     const pasos = act === 'ensamble'
-      ? ['Radiografía', 'Se generan 2 entradas: la imagen y su espejo horizontal (TTA)', 'Cada una pasa por los 2 MobileNetV2 del TP (fine-tuning y fase 1): 4 predicciones', 'Promedio de las 4 probabilidades de “patológica”', 'Patológico desde 0,30 (umbral del TP); incierto entre 0,20 y 0,30', 'Grad-CAM calculado sobre el MobileNetV2 con fine-tuning']
+      ? ['Radiografía', 'Se generan 2 entradas: la imagen y su espejo horizontal (TTA)', 'Cada una pasa por los 2 MobileNetV2 (fine-tuning y fase 1): 4 predicciones', 'Promedio de las 4 probabilidades de “patológica”', 'Patológico desde 0,30; incierto entre 0,20 y 0,30', 'Grad-CAM calculado sobre el MobileNetV2 con fine-tuning']
       : act === 'cnn_desde_cero'
       ? ['Radiografía', 'RGB 224×224 · escala a [0, 1]', '5 × (Conv 3×3 + BatchNorm + MaxPool): 32 → 64 → 128 → 128 → 128 filtros', 'Pooling global promedio', 'Dense 256 + Dropout 0,5', 'Softmax: OK / Patológica']
-      : ['Radiografía', 'RGB 224×224 · escala a [−1, 1] (preprocess_input de MobileNetV2)', 'MobileNetV2 (ImageNet): 17 bloques residuales invertidos con convoluciones depthwise', 'Última capa convolucional out_relu (7×7×1280) → Grad-CAM', 'Pooling global promedio + Dropout 0,3', 'Softmax: OK / Patológica → patológico desde 0,30 (umbral del TP); incierto entre 0,20 y 0,30'];
+      : ['Radiografía', 'RGB 224×224 · escala a [−1, 1] (preprocess_input de MobileNetV2)', 'MobileNetV2 (ImageNet): 17 bloques residuales invertidos con convoluciones depthwise', 'Última capa convolucional out_relu (7×7×1280) → Grad-CAM', 'Pooling global promedio + Dropout 0,3', 'Softmax: OK / Patológica → patológico desde 0,30; incierto entre 0,20 y 0,30'];
     const errores = r ? r.porImagen.filter(([id, v]) => (TEST_SET.find((t) => t.id === id).clase === 'patologica') !== (v >= CNN.UMBRAL_PATOLOGICO)).length : 0;
-    const html = pageHead('brain', 'Modelo CNN', 'Modelos del TP de Aprendizaje Automático, convertidos de Keras a TensorFlow.js y ejecutados en el navegador.') +
-      '<div class="callout green" style="margin-bottom:20px">' + icon('info') + '<span>Dataset del TP: <b>441 radiografías de tórax</b> (OK / patológicas), divididas en 308 de entrenamiento, 66 de validación y 67 de test. Las métricas “en el navegador” se calculan acá mismo sobre las <b>67 de test</b>, que ningún modelo vio al entrenar.</span></div>' +
-      '<div class="table-wrap" style="margin-bottom:20px"><table><thead><tr><th>Modelo</th><th>AUC (TP)</th><th>AUC en el navegador</th><th>Exactitud @0,5</th><th>Recall @0,30</th><th>Precisión @0,30</th><th class="actions"></th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
+    const html = pageHead('brain', 'Modelo CNN', 'Redes neuronales convolucionales de clasificación de radiografías de tórax (OK / patológica), ejecutadas en el navegador con TensorFlow.js.') +
+      '<div class="callout green" style="margin-bottom:20px">' + icon('info') + '<span>Alcance: <b>solo tórax de perro y gato</b>. Las métricas “en el navegador” se calculan acá mismo sobre <b>67 radiografías de prueba</b> que ningún modelo vio al entrenar. Modelo en uso: <b>' + esc(C[act].nombre) + '</b> · versión ' + esc(CNN.info(act).version) + '.</span></div>' +
+      datosEntrenamiento() + auditoriaModelo() +
+      '<div class="table-wrap" style="margin-bottom:20px"><table><thead><tr><th>Modelo</th><th>AUC de referencia</th><th>AUC en el navegador</th><th>Exactitud @0,5</th><th>Recall @0,30</th><th>Precisión @0,30</th><th class="actions"></th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
       '<div class="grid halves">' +
       '<div class="card"><div class="card-head"><h3>' + esc(C[act].nombre) + '</h3>' + (mi.parametros ? '<span class="small muted">' + mi.parametros.toLocaleString('es-AR') + ' parámetros · ' + mi.capas + ' capas</span>' : '') + '</div><div class="card-pad" style="padding-top:6px"><p class="small muted" style="margin-top:0">' + esc(C[act].descripcion) + '</p><ul class="timeline">' + pasos.map((p) => '<li><div class="tt" style="font-weight:500">' + p + '</div></li>').join('') + '</ul>' +
       (mi.reentrenado ? '<div class="callout violet" style="margin-top:14px">' + icon('brain') + '<span>Capa final reentrenada en esta clínica el ' + fDate(mi.reentrenado.fecha) + ' con ' + mi.reentrenado.imagenes + ' radiografías.</span></div>' : '') +
@@ -210,10 +214,16 @@
           const t = TEST_SET.find((x) => x.id === id), real = t.clase === 'patologica', ok = real === (v >= CNN.UMBRAL_PATOLOGICO);
           return '<div><img src="' + t.src + '" alt="" loading="lazy" style="width:100%;border-radius:8px;display:block;aspect-ratio:1;object-fit:cover"><div class="small" style="margin-top:4px">' + (ok ? '✅' : '❌') + ' <b>' + pct(v) + '</b> pat.<br><span class="muted">Real: ' + (real ? esc(t.dx || 'Patológica') : 'OK') + '</span></div></div>';
         }).join('') + '</div></div></div>' : '') +
-      (C[act].reentrenable ? reentrenoHtml(mi) : '<div class="callout violet">' + icon('info') + '<span>Para reentrenar con radiografías de la clínica, elegí uno de los modelos MobileNetV2 individuales.</span></div>');
+      (C[act].reentrenable && Store.puedeAccion('cambiarModelo') ? reentrenoHtml(mi) : !Store.puedeAccion('cambiarModelo') ? '' : '<div class="callout violet">' + icon('info') + '<span>Para reentrenar con radiografías de la clínica, elegí uno de los modelos MobileNetV2 individuales.</span></div>');
     return {
       html, mount(root) {
-        on(root, '[data-usar]', 'click', async (el) => { el.disabled = true; el.textContent = 'Cargando…'; await CNN.usar(el.dataset.usar); toast('Modelo en uso: ' + C[el.dataset.usar].nombre); reanalizarTodo(); });
+        on(root, '[data-usar]', 'click', (el) => confirmModal('Cambiar el modelo activo', 'Los estudios nuevos se van a analizar con <b>' + esc(C[el.dataset.usar].nombre) + '</b>. Los estudios ya analizados conservan su resultado y la versión del modelo con que se analizaron; los informes firmados no cambian. El cambio queda registrado en la auditoría.', 'Cambiar', async () => {
+          const de = { clave: CNN.activo, version: CNN.info().version };
+          await CNN.usar(el.dataset.usar);
+          A.auditar('cambio_modelo', { de, a: { clave: CNN.activo, version: CNN.info().version } });
+          toast('Modelo en uso: ' + C[el.dataset.usar].nombre);
+        }));
+        const bd = root.querySelector('#btn-datos'); if (bd) bd.onclick = datosForm;
         on(root, '[data-gal]', 'click', (el) => { ui.gal = el.dataset.gal; App.render(); });
         bindReentreno(root);
         evaluarPendientes();
@@ -242,8 +252,8 @@
       estado = '<div class="callout ' + (mejor ? 'green' : 'amber') + '" style="margin-bottom:14px">' + icon(mejor ? 'check' : 'alert') + '<span>Capa final reentrenada con ' + e.res.meta.imagenes + ' radiografías (' + e.res.meta.ok + ' OK, ' + e.res.meta.patologica + ' patológicas). En el test: AUC <b>' + num(a.auc) + ' → ' + num(b.auc) + '</b>, recall @0,30 ' + pct(a.m30.recall) + ' → ' + pct(b.m30.recall) + ', precisión @0,30 ' + pct(a.m30.precision) + ' → ' + pct(b.m30.precision) + '.' + (mejor ? '' : ' El nuevo modelo rinde peor en el test: conviene descartarlo o sumar más imágenes.') + '</span></div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="re-adopt">' + icon('check') + 'Usar el modelo reentrenado</button><button class="btn" id="re-discard">Descartar</button></div>';
     }
-    return '<div class="card"><div class="card-head"><h3>Reentrenar con radiografías de la clínica</h3>' + (mi.reentrenado ? '<button class="btn sm" id="re-restore">' + icon('history') + 'Volver a la capa original del TP</button>' : '') + '</div><div class="card-pad" style="padding-top:6px">' +
-      '<p class="small muted" style="margin-top:0">Igual que la fase 1 del TP: la base MobileNetV2 queda congelada y se reentrena solo la capa de clasificación con imágenes nuevas, ya diagnosticadas por un veterinario (con espejo horizontal y class_weight balanceado). El resultado se valida contra el mismo conjunto de test antes de adoptarlo.</p>' +
+    return '<div class="card"><div class="card-head"><h3>Reentrenar con radiografías de la clínica</h3>' + (mi.reentrenado ? '<button class="btn sm" id="re-restore">' + icon('history') + 'Volver a la capa original</button>' : '') + '</div><div class="card-pad" style="padding-top:6px">' +
+      '<p class="small muted" style="margin-top:0">Transfer learning: la base MobileNetV2 queda congelada y se reentrena solo la capa de clasificación con imágenes nuevas, ya diagnosticadas por un veterinario (con espejo horizontal y class_weight balanceado). El resultado se valida contra el mismo conjunto de test antes de adoptarlo.</p>' +
       '<div class="file-row"><label>Radiografías OK</label><input type="file" accept="image/*" multiple id="re-ok"' + (e.estado === 'running' ? ' disabled' : '') + '></div>' +
       '<div class="file-row"><label>Radiografías patológicas</label><input type="file" accept="image/*" multiple id="re-pat"' + (e.estado === 'running' ? ' disabled' : '') + '></div>' +
       '<div class="form-grid" style="max-width:260px;margin-top:10px"><div class="field"><label>Épocas</label><input type="number" id="re-ep" value="20" min="2" max="100"></div></div>' +
@@ -268,15 +278,35 @@
       } catch (err) { console.error(err); Object.assign(reent, { estado: 'error', msg: err.message }); }
       App.render();
     };
-    const a = root.querySelector('#re-adopt'); if (a) a.onclick = async () => { await CNN.adoptarCabeza(reent.res); reent.estado = 'idle'; delete evals[CNN.activo]; toast('Modelo reentrenado en uso'); reanalizarTodo(); };
+    const a = root.querySelector('#re-adopt'); if (a) a.onclick = async () => { const de = { clave: CNN.activo, version: CNN.info().version }; await CNN.adoptarCabeza(reent.res); A.auditar('reentrenamiento', { de, a: { clave: CNN.activo, version: CNN.info().version }, imagenes: reent.res.meta.imagenes }); reent.estado = 'idle'; delete evals[CNN.activo]; toast('Modelo reentrenado en uso (los estudios anteriores no se reanalizan)'); };
     const d = root.querySelector('#re-discard'); if (d) d.onclick = () => { reent.estado = 'idle'; App.render(); };
-    const rs = root.querySelector('#re-restore'); if (rs) rs.onclick = () => confirmModal('Volver al modelo del TP', 'Se descarta la capa reentrenada en la clínica.', 'Restaurar', async () => { await CNN.restaurarCabeza(); delete evals[CNN.activo]; toast('Capa original restaurada'); reanalizarTodo(); });
+    const rs = root.querySelector('#re-restore'); if (rs) rs.onclick = () => confirmModal('Volver a la capa original', 'Se descarta la capa reentrenada en la clínica. Los estudios anteriores no se reanalizan.', 'Restaurar', async () => { const de = { clave: CNN.activo, version: CNN.info().version }; await CNN.restaurarCabeza(); A.auditar('restaurar_modelo', { de, a: { clave: CNN.activo, version: CNN.info().version } }); delete evals[CNN.activo]; toast('Capa original restaurada'); });
   }
-  async function reanalizarTodo() {
-    App.render();
-    for (const e of S().estudios.slice()) { try { await Views.analizarEstudio(e.id); } catch (err) { console.error(err); } }
-    toast('Estudios reanalizados con el modelo actual');
+  /* Datos de entrenamiento: origen, fecha, alcance y autorización de uso (decisión confirmada 4). */
+  function datosEntrenamiento() {
+    const d = (S().config || {}).modeloDatos || {};
+    const fila = (k, v) => '<dt>' + k + '</dt><dd>' + (v ? esc(v) : '<span class="muted">Pendiente de documentar</span>') + '</dd>';
+    return '<div class="card" style="margin-bottom:20px"><div class="card-head"><h3>Datos de entrenamiento</h3>' + (Store.puedeAccion('cambiarModelo') ? '<button class="btn sm" id="btn-datos">' + icon('edit') + 'Editar</button>' : '') + '</div><div class="card-pad" style="padding-top:6px"><dl class="dl">' +
+      fila('Origen', d.origen) + fila('Fecha', d.fecha) + fila('Alcance', d.alcance) + fila('Imágenes', d.imagenes) + fila('Autorización de uso', d.autorizacion) + '</dl></div></div>';
+  }
+  function datosForm() {
+    const d = (S().config || {}).modeloDatos || {};
+    const campo = (k, l, ph) => '<div class="field full"><label>' + l + '</label><input name="' + k + '" value="' + esc(d[k] || '') + '" placeholder="' + (ph || '') + '"></div>';
+    openModal({
+      title: 'Datos de entrenamiento del modelo',
+      body: '<div class="form-grid">' + campo('origen', 'Origen') + campo('fecha', 'Fecha', 'Ej.: septiembre de 2026') + campo('alcance', 'Alcance') + campo('imagenes', 'Imágenes') + campo('autorizacion', 'Autorización de uso', 'Referencia al documento firmado (se documenta fuera del sistema)') + '</div>',
+      foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="dt-ok">Guardar</button>',
+      onMount(m) { m.querySelector('#dt-ok').onclick = () => { A.setConfig({ modeloDatos: formData(m) }); A.auditar('datos_entrenamiento', {}); closeModal(); toast('Datos de entrenamiento actualizados'); }; },
+    });
+  }
+  /* Historial de cambios del modelo (auditoría). */
+  function auditoriaModelo() {
+    const TXT = { cambio_modelo: 'Cambio de modelo activo', reentrenamiento: 'Reentrenamiento de la capa final', restaurar_modelo: 'Restauración de la capa original', datos_entrenamiento: 'Edición de datos de entrenamiento' };
+    const lista = (S().auditoria || []).filter((a) => TXT[a.accion]).slice().reverse();
+    if (!lista.length) return '';
+    return '<div class="card" style="margin-bottom:20px"><div class="card-head"><h3>Auditoría del modelo</h3></div><div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>De</th><th>A</th></tr></thead><tbody>' +
+      lista.map((a) => '<tr><td class="nowrap">' + fShort(a.fecha) + '</td><td>' + esc(Store.nombreUsuario(a.usuario)) + '</td><td>' + TXT[a.accion] + '</td><td class="sp">' + esc(a.de ? a.de.version : '') + '</td><td class="sp">' + esc(a.a ? a.a.version : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
   }
 
-  Object.assign(window.Views, { interconsultas, interconsultaForm, simularSoporte, interconsultaDetalle, datasetRows, calidad, analitica, rocSvg, matriz, modelo, evaluarPendientes, reentrenoHtml, bindReentreno, reanalizarTodo });
+  Object.assign(window.Views, { interconsultas, interconsultaForm, simularSoporte, interconsultaDetalle, datasetRows, calidad, analitica, rocSvg, matriz, modelo, evaluarPendientes, reentrenoHtml, bindReentreno, datosEntrenamiento, auditoriaModelo });
 })();

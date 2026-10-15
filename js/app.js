@@ -181,13 +181,18 @@
   window.addEventListener('hashchange', () => { sidebar.classList.remove('open'); UI.closeModal(); render(); });
   Store.on(scheduleRender);
 
+  /* DEMO_MODE (apagado por defecto): ?demo=1 lo prende y ?demo=0 lo apaga; queda guardado. */
+  const demoParam = new URLSearchParams(location.search).get('demo');
+  if (demoParam === '1' || demoParam === '0') Store.A.setDemo(demoParam === '1');
+  document.getElementById('reset-demo').hidden = !Store.demo;
+
   window.App = { render };
   if (!location.hash) location.hash = '#/inicio'; else render();
 
   /* Al iniciar, la CNN analiza los estudios que todavía no tienen resultado. */
   CNN.ensure().then(async (ok) => {
     if (!ok) { toast('No se pudo cargar el modelo CNN', 'warn'); return; }
-    for (const e of S().estudios.filter((x) => !x.resultado)) {
+    for (const e of S().estudios.filter((x) => !x.resultado && x.activo !== false)) {
       try { await Views.analizarEstudio(e.id); } catch (err) { console.error(err); }
     }
   });

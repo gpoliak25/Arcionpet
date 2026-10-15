@@ -15,7 +15,7 @@
     const fila = (t, acciones) => { const p = Store.paciente(t.pacienteId); return '<div class="list-row"><div class="grow"><span class="t">' + esc(p.nombre) + ' · ' + esc(t.tipo) + '</span> <span class="muted">· ' + fShort(t.fecha) + '</span>' + (t.nota ? '<div class="s">' + esc(t.nota) + '</div>' : '') + '</div>' + acciones + '</div>'; };
 
     const html = pageHead('calendar', 'Turnos', 'Agenda de la clínica y pedidos de turno desde el Portal Cliente.',
-      '<button class="btn" id="btn-portal">' + icon('globe') + 'Simular pedido del portal</button><button class="btn primary" id="btn-turno">' + icon('plus') + 'Nuevo turno</button>') +
+      (Store.demo ? '<button class="btn" id="btn-portal">' + icon('globe') + 'Simular pedido del portal</button>' : '') + '<button class="btn primary" id="btn-turno">' + icon('plus') + 'Nuevo turno</button>') +
       '<div class="grid kpis">' +
       kpi('clock', '', 'Turnos de hoy', hoy.length, porAtender.length + ' por atender') +
       kpi('globe', '', 'Pedidos a confirmar', pedidos.length, pedidos.length ? 'desde el Portal Cliente' : '') +
@@ -31,7 +31,7 @@
     return {
       html, mount(root) {
         root.querySelector('#btn-turno').onclick = () => turnoForm();
-        root.querySelector('#btn-portal').onclick = portalForm;
+        const bp = root.querySelector('#btn-portal'); if (bp) bp.onclick = portalForm;
         on(root, '[data-ag]', 'click', (el) => { ui.agenda = +el.dataset.ag; App.render(); });
         on(root, '[data-st]', 'click', (el) => {
           const msg = { confirmado: 'Turno confirmado. Se notificó al tutor.', cancelado: 'Turno cancelado', atendido: 'Turno marcado como atendido', no_vino: 'Turno marcado como ausente' }[el.dataset.st];

@@ -150,13 +150,13 @@
     // Informes pendientes
     if (has(t, 'informe') && has(t, 'firmar', 'pendiente', 'falta', 'borrador', 'sin firmar')) { if (!Store.puede('informes')) return sinPermiso('informes');
       const b = S().informes.filter((i) => i.estado === 'borrador');
-      return b.length ? 'Tenés <b>' + b.length + '</b> informe' + (b.length > 1 ? 's' : '') + ' en borrador para revisar y firmar:' + list(b.map((i) => { const e = Store.estudio(i.estudioId), p = Store.paciente(e.pacienteId); return '<a href="#/informes/' + i.id + '">' + esc(p.nombre) + ' · ' + esc(e.tipo) + '</a> — confianza ' + UI.NIVEL[i.nivel].toLowerCase(); })) : 'No tenés informes pendientes de firma. ✅';
+      return b.length ? 'Tenés <b>' + b.length + '</b> informe' + (b.length > 1 ? 's' : '') + ' en borrador para revisar y firmar:' + list(b.map((i) => { const e = Store.estudio(i.estudioId), p = Store.paciente(e.pacienteId); return '<a href="#/informes/' + i.id + '">' + esc(p.nombre) + ' · ' + esc(e.tipo) + '</a> — ' + e.probPatologia + '% probabilidad de patología'; })) : 'No tenés informes pendientes de firma. ✅';
     }
 
     // Urgentes / triage
     if (has(t, 'urgente', 'triage', 'priorid', 'atender primero', 'patologic')) { if (!Store.puede('triage')) return sinPermiso('triage');
       const tr = Store.triage().filter((r) => r.prioridad === 'urgente');
-      return tr.length ? 'Hay <b>' + tr.length + '</b> estudio' + (tr.length > 1 ? 's' : '') + ' urgentes. Los primeros:' + list(tr.slice(0, 5).map((r) => { const p = Store.paciente(r.e.pacienteId); return '<a href="#/estudios/' + r.e.id + '">' + esc(p.nombre) + ' · ' + esc(r.e.tipo) + '</a> — ' + Store.RES_LABEL[r.e.resultado] + ' ' + r.e.confianza + '% · ' + (r.espera === 0 ? 'hoy' : r.espera + ' d de espera'); })) + link('#/triage', 'Ir a Triage') : 'No hay estudios urgentes. ✅';
+      return tr.length ? 'Hay <b>' + tr.length + '</b> estudio' + (tr.length > 1 ? 's' : '') + ' urgentes. Los primeros:' + list(tr.slice(0, 5).map((r) => { const p = Store.paciente(r.e.pacienteId); return '<a href="#/estudios/' + r.e.id + '">' + esc(p.nombre) + ' · ' + esc(r.e.tipo) + '</a> — ' + Store.RES_LABEL[r.e.resultado] + ' ' + r.e.probPatologia + '% · ' + (r.espera === 0 ? 'hoy' : r.espera + ' d de espera'); })) + link('#/triage', 'Ir a Triage') : 'No hay estudios urgentes. ✅';
     }
 
     // Derivaciones

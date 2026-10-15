@@ -41,6 +41,8 @@
     anularVenta: ['administracion'],
     venderFarmacia: ['veterinario', 'recepcion', 'administracion'],
     editarPrecios: ['administracion'],
+    cambiarModelo: ['administracion'], // modelo activo y reentrenamiento, con auditoría
+    configurar: ['administracion'],
   };
 
   function nivel(rol, modulo) {
