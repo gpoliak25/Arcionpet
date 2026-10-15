@@ -13,7 +13,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | Diapositiva | Módulo en la demo |
 |---|---|
 | 4 · Inicio | Prioridades del día, agenda de hoy, estudios recientes, cupo de soporte |
-| 6 · Pacientes y turnos | Alta/edición, búsqueda por mascota, raza, tutor o documento, **Buscar en la red** EISPLUS, tutores · Agenda 7/14/21 días, pedidos del **Portal Cliente**, cierre de turnos pasados |
+| 6 · Pacientes y turnos | Alta/edición, búsqueda por mascota, raza, tutor o documento, **Buscar en la red** EISPLUS, tutores · **Calendario por recurso** (profesionales, salas, equipos) con servicios de duración y precio, horarios libres y detección de conflictos; al cargar un estudio, el turno de imágenes del día se cierra solo; "Atendido" registra la vacuna o el antiparasitario aplicado (stock, ficha clínica y próximo refuerzo) y pasa a cobrar; **Portal Cliente**: elegir servicio y horario, ver el estado, cancelar y reprogramar |
 | — · Tutores | Ficha con contacto, mascotas a cargo, historial de turnos y compras; alta con validación de DNI/CUIT/pasaporte; baja lógica |
 | — · Inventario | Pet shop (alimentos, correas y accesorios, ropa, juguetes) y farmacia (antiparasitarios, medicamentos, vacunas, insumos): stock por lotes, mínimo con alerta, vencimientos a 30 días, ingreso de mercadería, ajustes sin stock negativo y declaraciones SIGTRAZAVET pendientes (Res. SENASA 654/2026, art. 12) con declaración jurada. Costo, proveedor y margen; código de barras EAN-13; sugerencia de reposición; historial de movimientos; botiquín de autoconsumo del veterinario (art. 20) con registro en la ficha clínica |
 | — · Ventas | Punto de venta con lector de código de barras, tutor o consumidor final (los productos bajo receta exigen tutor y mascota), medios de pago QR, transferencia, efectivo, crédito y débito, descuento de stock FEFO y comprobante. Productos bajo receta solo contra una **RVE** vigente (Res. SENASA 654/2026: CUVE, datos del art. 18 d, 30 días, una sola dispensa) o entrega desde botiquín del veterinario (art. 20). Caja con apertura, ingresos y retiros y cierre con arqueo. Factura electrónica A, B o C con CAE y punto de venta (en **homologación**: sin validez fiscal). Devoluciones parciales o totales con nota de crédito, reintegro en caja y reposición al lote (solo administración). Las vacunas y antiparasitarios vendidos o aplicados agendan la próxima dosis |
@@ -35,7 +35,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 4. **Control de calidad**: aparece la nueva evaluación; descargar el **CSV**.
 5. **Triage**: ordenado por prioridad; abrir un estudio *Incierto* y **Derivar a especialista**. En **Derivaciones**, tocar *Simular respuesta*.
 6. **Interconsultas → Nueva interconsulta**: baja el cupo, y a los pocos segundos responde el soporte.
-7. **Turnos → Simular pedido del portal**: el pedido llega a la clínica, que lo confirma.
+7. **Turnos → Portal Cliente**: el tutor elige servicio y horario, cancela o reprograma; el pedido llega a la clínica, que lo confirma.
 8. **Hemocomponentes**: ver las alertas de vencimiento, abrir una unidad (trazabilidad) y **reservarla** para un paciente.
 9. **ARCION**: "¿Qué turnos tengo hoy?", "Datos de Rocky", "Stock de plasma felino", "¿Cómo firmo un informe?".
 10. **Modelo CNN**: comparar los tres modelos del TP evaluados en vivo y ver los errores imagen por imagen.
@@ -94,7 +94,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo) y emisión de RVE.
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo), emisión de RVE y turnos (conflictos por recurso, horario, transiciones, reprogramación, horarios libres, vínculo con estudios y cobro de servicios).
 
 ## Estructura
 

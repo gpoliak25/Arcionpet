@@ -233,6 +233,43 @@
         return s;
       },
     },
+    {
+      de: 15, a: 16, descripcion: 'Turnos: servicios con duración y precio, recursos (profesionales, salas, equipos) y horario de atención',
+      up(s) {
+        const SV = (id, nombre, duracion, precio, requiere, recursosDefecto, extra) => Object.assign({ id, nombre, duracion, precio, requiere, recursosDefecto, portal: true, activo: true }, extra || {});
+        s.servicios = [
+          SV('consulta', 'Consulta general', 30, 25000, ['profesional', 'sala'], ['r-vet', 'r-cons1']),
+          SV('vacunacion', 'Vacunación', 20, 12000, ['profesional', 'sala'], ['r-vet', 'r-cons1'], { aplicaCategoria: 'Vacunas' }),
+          SV('desparasitacion', 'Desparasitación', 15, 8000, ['profesional', 'sala'], ['r-vet', 'r-cons1'], { aplicaCategoria: 'Antiparasitarios' }),
+          SV('radiografia', 'Radiografía', 30, 45000, ['profesional', 'equipo'], ['r-vet', 'r-rx'], { estudio: true }),
+          SV('control', 'Control', 20, 15000, ['profesional', 'sala'], ['r-vet', 'r-cons1']),
+          SV('control_cardiologico', 'Control cardiológico', 40, 35000, ['profesional', 'sala'], ['r-vet2', 'r-cons2']),
+          SV('castracion', 'Castración', 90, 180000, ['profesional', 'sala'], ['r-vet2', 'r-quir'], { portal: false }),
+          SV('cirugia', 'Cirugía', 120, 250000, ['profesional', 'sala'], ['r-vet2', 'r-quir'], { portal: false }),
+        ];
+        const vet = (id) => (s.usuarios || []).find((u) => u.id === id) || {};
+        s.recursos = [
+          { id: 'r-vet', tipo: 'profesional', nombre: vet('u-vet').nombre || 'Veterinario/a 1', usuarioId: 'u-vet', activo: true },
+          { id: 'r-vet2', tipo: 'profesional', nombre: vet('u-vet2').nombre || 'Veterinario/a 2', usuarioId: 'u-vet2', activo: true },
+          { id: 'r-cons1', tipo: 'sala', nombre: 'Consultorio 1', activo: true },
+          { id: 'r-cons2', tipo: 'sala', nombre: 'Consultorio 2', activo: true },
+          { id: 'r-quir', tipo: 'sala', nombre: 'Quirófano', activo: true },
+          { id: 'r-rx', tipo: 'equipo', nombre: 'Equipo de rayos X', activo: true },
+        ];
+        const MAPA = { 'Consulta general': 'consulta', 'Vacunación': 'vacunacion', 'Radiografía': 'radiografia', 'Control cardiológico': 'control_cardiologico', 'Castración': 'castracion', 'Cirugía': 'cirugia', 'Consulta traumatológica': 'consulta' };
+        s.turnos = s.turnos.map((t) => {
+          const sv = s.servicios.find((x) => x.id === (MAPA[t.tipo] || (/^Control/.test(t.tipo) ? 'control' : 'consulta')));
+          return Object.assign({ servicioId: sv.id, duracion: sv.duracion, recursos: sv.recursosDefecto.slice(), historial: [] }, t);
+        });
+        s.config = Object.assign({}, s.config, { agenda: { inicio: '09:00', fin: '19:00', intervalo: 15 } });
+        return s;
+      },
+      down(s) {
+        s.turnos = s.turnos.map((t) => { const c = Object.assign({}, t); ['servicioId', 'duracion', 'recursos', 'historial', 'estudioId', 'ventaId', 'aplicacionId', 'cancelacion'].forEach((k) => delete c[k]); return c; });
+        delete s.servicios; delete s.recursos; delete s.config.agenda;
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

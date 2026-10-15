@@ -222,7 +222,10 @@
       S.calendarioSalud.push({ id: uid('cs'), pacienteId, productoId: p.id, nombre: p.nombre, categoria: p.categoria, fecha: d.toISOString().slice(0, 10), origen, estado: 'pendiente', creado: fecha });
     });
   }
-  const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
+  /* ---------- Turnos ---------- */
+  const TU = () => Dominio.turnos;
+  const ctxTurnos = () => ({ turnos: S.turnos, recursos: S.recursos || [], servicios: S.servicios || [], pacientes: S.pacientes, agenda: (S.config || {}).agenda, ahora: new Date().toISOString() });
+  const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes, servicios: S.servicios || [] }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
   function aplicarVentas(e) { CLAVES_VENTA.forEach((k) => { S[k] = e[k]; }); save(); }
 
   /* ---------- Mutaciones ---------- */
@@ -263,7 +266,8 @@
       const cajas = K.movimiento(S.cajas, { tipo: 'venta', medio: venta.medioPago, monto: r.venta.total, ref: r.venta.id, usuario: S.usuarioActivo, fecha: ctx.fecha });
       Object.assign(r.venta, { comprobanteId: f.id, puntoVenta: pv, cliente: venta.tutorId ? null : cliente });
       S.comprobantes = (S.comprobantes || []).concat([f]); S.cajas = cajas;
-      agendarDosis(venta.pacienteId, r.venta.items, r.venta.id, ctx.fecha);
+      agendarDosis(venta.pacienteId, r.venta.items.filter((i) => !i.servicio), r.venta.id, ctx.fecha);
+      r.venta.items.filter((i) => i.turnoId).forEach((i) => { const t = byId('turnos', i.turnoId); if (t) t.ventaId = r.venta.id; });
       aplicarVentas(r.estado); return r.venta;
     },
     /* Devolución parcial o total (solo administración): repone stock, emite nota de crédito y registra el reintegro en la caja. */
@@ -339,12 +343,45 @@
     /* Baja lógica: el tutor y su historial se conservan; deja de ofrecerse para nuevas altas. */
     bajaTutor(id) { Object.assign(byId('tutores', id), { activo: false, fechaBaja: new Date().toISOString() }); save(); },
     reactivarTutor(id) { const t = byId('tutores', id); t.activo = true; delete t.fechaBaja; save(); },
-    addTurno(t) { t.id = uid('tu'); S.turnos.push(t); save(); return t; },
-    setTurno(id, estado) { byId('turnos', id).estado = estado; save(); },
+    /* Turnos: la lógica de dominio valida servicio, recursos, horario y conflictos; si algo falla no se guarda nada. */
+    addTurno(datos) {
+      const sv = (S.servicios || []).find((x) => x.id === datos.servicioId) || {};
+      const t = Object.assign({ estado: 'confirmado', origen: 'clinica', historial: [] }, datos, { tipo: sv.nombre || datos.tipo, duracion: datos.duracion || sv.duracion, recursos: datos.recursos || (sv.recursosDefecto || []).slice() });
+      const e = TU().validar(t, ctxTurnos());
+      if (e.length) throw new (TU().ErrorTurno)(e[0]);
+      t.id = uid('tu'); t.creado = new Date().toISOString(); t.creadoPor = S.usuarioActivo;
+      S.turnos.push(t); save(); return t;
+    },
+    setTurno(id, estado, extra) {
+      const i = S.turnos.findIndex((t) => t.id === id);
+      const sello = estado === 'cancelado' ? { cancelacion: Object.assign({ fecha: new Date().toISOString(), por: S.usuarioActivo }, extra || {}) } : {};
+      S.turnos[i] = TU().cambiarEstado(S.turnos[i], estado, sello); save(); return S.turnos[i];
+    },
+    /* Reprogramar. Desde el portal, el turno vuelve a quedar como pedido a confirmar. */
+    reprogramarTurno(id, fecha, opciones) {
+      const i = S.turnos.findIndex((t) => t.id === id);
+      let t = TU().reprogramar(S.turnos[i], fecha, ctxTurnos(), (opciones && opciones.portal) ? 'tutor' : S.usuarioActivo);
+      if (opciones && opciones.portal) t = Object.assign(t, { estado: 'pendiente', origen: 'portal' });
+      S.turnos[i] = t; save(); return t;
+    },
+    /* Atendido: si el servicio aplica una vacuna o un antiparasitario, el veterinario registra la aplicación (botiquín, art. 20). */
+    atenderTurno(id, aplicacion) {
+      const t = byId('turnos', id);
+      TU().cambiarEstado(t, 'atendido');
+      let reg = null;
+      if (aplicacion) reg = A.autoconsumo(Object.assign({ pacienteId: t.pacienteId, motivo: t.tipo + ' (turno)' }, aplicacion));
+      const i = S.turnos.findIndex((x) => x.id === id);
+      S.turnos[i] = TU().cambiarEstado(S.turnos[i], 'atendido', { atendido: new Date().toISOString(), atendidoPor: S.usuarioActivo, aplicacionId: reg ? reg.id : null });
+      save(); return { turno: S.turnos[i], aplicacion: reg };
+    },
     addEstudio(e) {
       const p = paciente(e.pacienteId) || {};
       Object.assign(e, { id: uid('e'), resultado: null, probPatologia: null, hallazgos: [], derivado: false, activo: true, asignadoA: null, fueraDeAlcance: G().fueraDeAlcance(e.tipo, p.especie) });
-      S.estudios.push(e); save(); return e;
+      S.estudios.push(e);
+      // el turno de imágenes de ese paciente para ese día se cierra solo
+      const t = TU().turnoDelEstudio(S.turnos, S.servicios, e);
+      if (t) Object.assign(t, { estado: 'atendido', estudioId: e.id, atendido: new Date().toISOString(), atendidoPor: S.usuarioActivo });
+      save(); return e;
     },
     /* res = { resultado, probPatologia, hallazgos, probs, modelo } calculado por la CNN.
        Con el informe firmado, el resultado queda congelado: no se vuelve a analizar. */
@@ -441,7 +478,10 @@
     get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
     estudiosActivos, contradicciones, demoras, demoraDe, get demo() { return !!(S.config && S.config.demoMode); },
     moduloHabilitado: (m) => Dominio.configuracion.habilitado(S.config, m),
-    cajaAbierta: () => Dominio.caja.abierta(S.cajas), facturacionCfg, clienteFactura,
+    cajaAbierta: () => Dominio.caja.abierta(S.cajas), facturacionCfg, clienteFactura, ctxTurnos,
+    servicio: (id) => (S.servicios || []).find((x) => x.id === id) || null,
+    recurso: (id) => (S.recursos || []).find((x) => x.id === id) || null,
+    get agenda() { return Object.assign({}, Dominio.turnos.AGENDA_DEFECTO, (S.config || {}).agenda); },
     comprobante: (id) => (S.comprobantes || []).find((c) => c.id === id) || null,
     get umbrales() { return Object.assign({}, Dominio.configuracion.DEFECTO.umbrales, (S.config || {}).umbrales); },
     get clinica() { return Object.assign({}, Dominio.configuracion.DEFECTO.clinica, (S.config || {}).clinica); },
