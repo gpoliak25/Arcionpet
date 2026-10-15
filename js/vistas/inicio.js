@@ -20,6 +20,13 @@
     if (P('turnos')) pendPortal.forEach((t) => { const p = Store.paciente(t.pacienteId); att.push({ ic: 'globe', c: 'green', t: 'Pedido de turno: ' + p.nombre, s: t.tipo + ' · ' + fShort(t.fecha) + ' · Portal Cliente', go: '#/turnos' }); });
     if (P('derivaciones')) s.derivaciones.filter((d) => d.estado === 'respondida' && !d.vista).forEach((d) => { const p = Store.paciente(Store.estudio(d.estudioId).pacienteId); att.push({ ic: 'stetho', c: 'green', t: 'Derivación respondida: ' + p.nombre, s: d.a, go: '#/derivaciones' }); });
     if (P('interconsultas')) s.interconsultas.filter((i) => i.noLeida).forEach((i) => att.push({ ic: 'chat', c: 'violet', t: 'Respuesta de soporte', s: i.asunto, go: '#/interconsultas/' + i.id }));
+    if (P('inventario')) {
+      const ia = Store.inventarioAlertas();
+      if (ia.vencidos.length) att.push({ ic: 'alert', c: 'red', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'No se pueden vender: dar de baja', go: '#/inventario' });
+      ia.declaraciones.forEach((d) => att.push({ ic: 'clipboard', c: 'violet', t: 'Declarar en SIGTRAZAVET', s: ((Store.producto(d.productoId) || {}).nombre || '') + ' · lote ' + d.lote, go: '#/inventario' }));
+      if (ia.bajoMinimo.length) att.push({ ic: 'package', c: '', t: ia.bajoMinimo.length + (ia.bajoMinimo.length === 1 ? ' producto' : ' productos') + ' bajo el stock mínimo', s: ia.bajoMinimo.slice(0, 3).map((p) => p.nombre).join(', ') + (ia.bajoMinimo.length > 3 ? '…' : ''), go: '#/inventario' });
+      if (ia.porVencer.length) att.push({ ic: 'clock', c: '', t: ia.porVencer.length + (ia.porVencer.length === 1 ? ' lote vence' : ' lotes vencen') + ' en 30 días', s: 'Farmacia veterinaria', go: '#/inventario' });
+    }
     if (P('hemocomponentes')) Store.hemoAlertas().forEach((x) => { const d = Store.daysBetween(new Date(), x.vence); att.push({ ic: 'drop', c: 'red', t: x.comp + ' ' + x.id, s: (d === 0 ? 'Vence hoy' : 'Vence en ' + d + ' d') + ' · ' + x.ubicacion, go: '#/hemocomponentes' }); });
 
     const recientes = s.estudios.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
@@ -40,7 +47,7 @@
         : empty('calendar', 'Sin turnos para hoy', '<span class="small">Los turnos que reserven tus clientes desde el portal aparecen acá.</span>')) +
       '</div>' : '<div class="card">' + empty('paw', 'Bienvenido/a a ArcionPet', '<span class="small">Usá el menú para acceder a los módulos de tu rol.</span>') + '</div>') +
       '<div class="card"><div class="card-head"><h3>Necesita atención</h3></div>' +
-      (att.length ? att.slice(0, 6).map((a) => '<div class="list-row clickable" data-go="' + a.go + '"><div class="att-ic ' + a.c + '">' + icon(a.ic) + '</div><div class="grow"><div class="t">' + esc(a.t) + '</div><div class="s">' + esc(a.s) + '</div></div></div>').join('')
+      (att.length ? att.slice(0, 8).map((a) => '<div class="list-row clickable" data-go="' + a.go + '"><div class="att-ic ' + a.c + '">' + icon(a.ic) + '</div><div class="grow"><div class="t">' + esc(a.t) + '</div><div class="s">' + esc(a.s) + '</div></div></div>').join('') + (att.length > 8 ? '<div class="list-row"><span class="small muted">y ' + (att.length - 8) + ' pendiente' + (att.length - 8 > 1 ? 's' : '') + ' más (ver notificaciones)</span></div>' : '')
         : empty('check', 'Nada pendiente', '')) +
       '</div></div>' +
       ((P('imagenes') || P('interconsultas')) ? '<div class="grid two">' : '') + (P('imagenes') ?

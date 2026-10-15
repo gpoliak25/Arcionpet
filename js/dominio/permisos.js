@@ -57,5 +57,10 @@
     return (ACCIONES[accion] || []).includes(rol);
   }
 
-  return { ROLES, MATRIZ, ACCIONES, NIVELES, nivel, puede, puedeAccion };
+  /* Ajustes y bajas de stock: administración en todo el inventario; el veterinario solo en farmacia. */
+  function puedeAjustarStock(rol, catalogo) {
+    return rol === 'administracion' || (rol === 'veterinario' && catalogo === 'farmacia');
+  }
+
+  return { ROLES, MATRIZ, ACCIONES, NIVELES, nivel, puede, puedeAccion, puedeAjustarStock };
 });

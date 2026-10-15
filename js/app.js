@@ -17,6 +17,9 @@
       { h: '#/informes', l: 'Informes', i: 'file', m: 'informes', c: () => S().informes.filter((i) => i.estado === 'borrador').length },
       { h: '#/derivaciones', l: 'Derivaciones', i: 'stetho', m: 'derivaciones', c: () => S().derivaciones.filter((d) => d.estado === 'pendiente').length },
     ] },
+    { id: 'inventario', g: 'Inventario y ventas', items: [
+      { h: '#/inventario', l: 'Inventario', i: 'package', m: 'inventario', c: () => { const a = Store.inventarioAlertas(); return a.bajoMinimo.length + a.porVencer.length + a.vencidos.length + a.declaraciones.length; }, hot: true },
+    ] },
     { id: 'servicios', g: 'Servicios', items: [
       { h: '#/turnos', l: 'Turnos', i: 'calendar', m: 'turnos', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
     ] },
@@ -35,6 +38,7 @@
   const ROUTES = {
     inicio: () => Views.inicio(),
     pacientes: () => Views.pacientes(),
+    inventario: () => Views.inventario(),
     tutores: (id) => (id ? Views.tutorDetalle(id) : Views.tutores()),
     turnos: () => Views.turnos(),
     estudios: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()),
@@ -51,7 +55,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();

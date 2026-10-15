@@ -8,7 +8,7 @@
   const link = (href, label) => '<a class="btn sm go" href="' + href + '">' + label + ' →</a>';
   const list = (items) => '<ul>' + items.map((i) => '<li>' + i + '</li>').join('') + '</ul>';
 
-  const NOMBRE_MODULO = { hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
+  const NOMBRE_MODULO = { inventario: 'inventario', hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
   const history = [];
   const mounts = new Set();
 
@@ -33,6 +33,20 @@
     return S().tutores.find((x) => t.includes(norm(x.apellido)) || new RegExp('\\b' + norm(x.nombre) + '\\b').test(t));
   }
 
+  /* Producto del inventario mencionado en la consulta (por palabras distintivas de su nombre). */
+  const GENERICAS = new Set(['alimento', 'vacuna', 'comprimido', 'comprimidos', 'suspension', 'solucion', 'antiparasitario', 'interno', 'perro', 'perros', 'gatos', 'adulto', 'mediana', 'acido', 'descartable', 'esteril', 'masticable', 'antipulgas', 'canina', 'felina', 'castrado', 'talle']);
+  function productoEn(t) {
+    const cats = Store.catalogosVisibles();
+    let mejor = null, puntos = 0;
+    (S().productos || []).filter((p) => p.activo !== false && cats.includes(p.catalogo)).forEach((p) => {
+      const pal = norm(p.nombre + ' ' + (p.principioActivo || '')).split(/[^a-z0-9]+/).filter((w) => w.length >= 5 && !GENERICAS.has(w));
+      const n = pal.filter((w) => t.includes(w)).length;
+      if (n > puntos) { mejor = p; puntos = n; }
+    });
+    return mejor;
+  }
+  const pesos = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
+
   function turnosEntre(desde, dias) {
     const a = new Date(); a.setHours(0, 0, 0, 0); a.setDate(a.getDate() + desde);
     const b = new Date(a); b.setDate(b.getDate() + dias);
@@ -51,6 +65,34 @@
       return '¡Hola, ' + esc(S().usuario.nombre) + '! Soy <b>ARCION</b>. Puedo responder dudas de uso del sistema y encontrar datos de pacientes, turnos, estudios y stock. ¿En qué te ayudo?';
     if (has(t, 'que podes', 'que puedes', 'ayuda', 'que sabes', 'como funcionas'))
       return 'Puedo ayudarte con:' + list(['<b>Dudas de uso</b>: cómo firmar un informe, derivar, cargar un estudio, dar un turno…', '<b>Pacientes</b>: “datos de Luna”, “mascotas de Pérez”', '<b>Agenda</b>: “turnos de hoy”, “turnos de mañana”, “turnos de la semana”', '<b>Diagnóstico</b>: “informes sin firmar”, “estudios urgentes”, “derivaciones pendientes”', '<b>Stock</b>: “stock de plasma”, “qué vence esta semana”', '<b>Indicadores</b>: “concordancia de la IA”, “cupo de interconsultas”']);
+
+    // Inventario (pet shop y farmacia)
+    const prodInv = S().productos ? productoEn(t) : null;
+    const claveInv = has(t, 'inventario', 'farmacia', 'pet shop', 'petshop', 'producto', 'alimento', 'correa', 'juguete', 'ropa', 'vacunas', 'antiparasit', 'medicamento', 'insumo', 'bajo minimo', 'stock minimo', 'reponer', 'precio');
+    if ((prodInv || claveInv) && !has(t, 'hemo', 'sangre', 'plasma', 'globulos', 'plaqueta', 'dea ', 'turno', 'agenda')) {
+      if (!Store.puede('inventario')) return sinPermiso('inventario');
+      const I = Dominio.inventario, hoy = new Date();
+      if (prodInv && !has(t, 'reponer', 'bajo minimo', 'stock minimo')) {
+        const e = I.estado(prodInv, S().lotes, hoy);
+        return '<b>' + esc(prodInv.nombre) + '</b> (' + esc(prodInv.presentacion) + '):' + list([
+          'Stock vendible: <b>' + e.vendible + '</b> (mínimo ' + prodInv.stockMinimo + ')' + (e.bajoMinimo ? ' · <b>reponer</b>' : '') + (e.vencidos ? ' · ' + e.vencidos + ' vencido' + (e.vencidos > 1 ? 's' : '') : ''),
+          'Precio: ' + pesos(prodInv.precio) + ' (IVA incluido)',
+        ].concat(prodInv.catalogo === 'farmacia' ? ['Próximo vencimiento: ' + (e.proximoVence ? fDate(e.proximoVence) + ' (' + e.diasProximo + ' días)' : '—'), prodInv.requiereReceta ? 'Venta bajo receta veterinaria electrónica' : 'Venta libre'] : [])) + link('#/inventario', 'Ver inventario');
+      }
+      const cats = Store.catalogosVisibles();
+      if (has(t, 'vence', 'vencim', 'vencid')) {
+        const v = I.vencimientos(S().productos.filter((p) => cats.includes(p.catalogo)), S().lotes, hoy);
+        const fila = (l) => { const p = Store.producto(l.productoId); return esc(p.nombre) + ' · lote ' + esc(l.lote) + ' · ' + fDate(l.vence) + ' · ' + l.cantidad + ' u.'; };
+        if (!v.vencidos.length && !v.porVencer.length) return 'No hay lotes de farmacia vencidos ni por vencer en los próximos 30 días. ✅';
+        return (v.vencidos.length ? '<b>Vencidos (no se pueden vender):</b>' + list(v.vencidos.map(fila)) : '') + (v.porVencer.length ? '<b>Vencen en los próximos 30 días:</b>' + list(v.porVencer.map(fila)) : '') + link('#/inventario', 'Ver inventario');
+      }
+      const bajo = Store.inventarioAlertas().bajoMinimo;
+      if (has(t, 'reponer', 'bajo minimo', 'stock minimo', 'falta', 'faltan')) {
+        return bajo.length ? 'Hay <b>' + bajo.length + '</b> producto' + (bajo.length > 1 ? 's' : '') + ' en el stock mínimo o por debajo:' + list(bajo.map((p) => esc(p.nombre) + ' · ' + I.estado(p, S().lotes, hoy).vendible + ' u. (mín ' + p.stockMinimo + ')')) + link('#/inventario', 'Ver inventario') : 'Ningún producto está bajo el stock mínimo. ✅';
+      }
+      const prods = S().productos.filter((p) => p.activo !== false && cats.includes(p.catalogo));
+      return 'El inventario tiene <b>' + prods.length + '</b> productos activos' + (bajo.length ? ', <b>' + bajo.length + '</b> en el stock mínimo o por debajo' : '') + '. Preguntame por un producto (por ejemplo, “stock de amoxicilina”), qué hay que reponer o qué vence en farmacia.' + link('#/inventario', 'Ver inventario');
+    }
 
     // Hemocomponentes
     if (has(t, 'hemo', 'stock', 'sangre', 'plasma', 'globulos', 'plaqueta', 'unidad', 'dea', 'vence', 'vencim')) { if (!Store.puede('hemocomponentes')) return sinPermiso('hemocomponentes');
