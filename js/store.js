@@ -134,6 +134,8 @@
     return rows;
   }
 
+  const H = () => Dominio.hemo;
+  const reservasPorVencer = () => Dominio.hemo.reservasPorVencer(S.hemo, ((S.config || {}).umbrales || {}).avisoHemo || 7, new Date());
   function hemoAlertas() {
     const dias = ((S.config || {}).umbrales || {}).avisoHemo || 7;
     return S.hemo.filter((u) => (u.estado === 'disponible' || u.estado === 'reservada') && daysBetween(new Date(), u.vence) <= dias && daysBetween(new Date(), u.vence) >= 0);
@@ -168,7 +170,11 @@
       if (ia.vencidos.length) n.push({ id: 'n-inv-venc', ic: 'alert', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'Dar de baja en Farmacia', go: '#/farmacia' });
       ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (['venta_rve', 'autoconsumo'].includes(d.tipo) ? 'en tiempo real' : r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/farmacia' }); });
     }
-    hemoAlertas().forEach((u) => {
+    if (puede('hemocomponentes')) reservasPorVencer().forEach((u) => {
+      const p = paciente(u.pacienteId) || {}, d = daysBetween(new Date(), u.vence);
+      n.push({ id: 'n-res-' + u.id, ic: 'drop', t: 'Reserva por vencer: ' + (p.nombre || ''), s: u.id + ' · ' + u.comp + ' · ' + (d === 0 ? 'vence hoy' : 'vence en ' + d + ' d') + ' · transfundir o liberar', go: '#/hemocomponentes' });
+    });
+    hemoAlertas().filter((u) => u.estado !== 'reservada').forEach((u) => {
       const d = daysBetween(new Date(), u.vence);
       n.push({ id: 'n-' + u.id, ic: 'drop', t: 'Hemocomponente por vencer', s: u.id + ' · ' + u.comp + ' · ' + (d === 0 ? 'vence hoy' : 'vence en ' + d + ' d'), go: '#/hemocomponentes' });
     });
@@ -548,6 +554,61 @@
     },
     leerInterconsulta(id) { const ic = byId('interconsultas', id); if (ic && ic.noLeida) { ic.noLeida = false; save(); } },
     cerrarInterconsulta(id) { byId('interconsultas', id).estado = 'cerrada'; save(); },
+    /* Reserva con control de compatibilidad: si la unidad no es compatible, hace falta justificarlo. */
+    reservarHemo(unidadId, pacienteId, justificacion) {
+      const u = byId('hemo', unidadId), p = paciente(pacienteId);
+      if (u.estado !== 'disponible' || u.ubicacion !== 'Esta clínica') throw new (H().ErrorHemo)('Solo se reservan unidades disponibles en esta clínica');
+      const c = H().compatibilidad(u, p, S.hemoTransfusiones, new Date());
+      if (c.nivel === 'bloqueo' && !String(justificacion || '').trim()) throw new (H().ErrorHemo)(c.motivos[0]);
+      return A.hemoEvento(unidadId, 'reserva', 'Reservada para ' + p.nombre + ' por ' + usuario().nombre + (c.nivel === 'bloqueo' ? ' (incompatible, justificado: ' + justificacion + ')' : ''), { estado: 'reservada', pacienteId });
+    },
+    /* Transfusión (o uso) por paciente: queda en el registro de transfusiones, en la ficha clínica y en la trazabilidad. */
+    transfundir(unidadId, datos) {
+      const u = byId('hemo', unidadId), p = paciente(datos.pacienteId), vet = usuario();
+      if (!['disponible', 'reservada'].includes(u.estado) || u.ubicacion !== 'Esta clínica') throw new (H().ErrorHemo)('La unidad no está disponible en esta clínica');
+      if (daysBetween(new Date(), u.vence) < 0) throw new (H().ErrorHemo)('La unidad está vencida');
+      if (u.estado === 'reservada' && u.pacienteId && u.pacienteId !== datos.pacienteId) throw new (H().ErrorHemo)('La unidad está reservada para otro paciente: liberala primero');
+      const c = H().compatibilidad(u, p, S.hemoTransfusiones, new Date());
+      if (c.nivel === 'bloqueo' && !String(datos.justificacion || '').trim()) throw new (H().ErrorHemo)(c.motivos[0] + '. Para continuar, justificá la decisión.');
+      const reg = Object.assign({ premedicacion: '', reaccionDetalle: '', justificacion: '' }, datos, { volumenUnidad: u.volumen, compatibilidad: c.nivel });
+      const e = H().validarTransfusion(reg);
+      if (e.length) throw new (H().ErrorHemo)(e[0]);
+      const ahora = new Date().toISOString(), id = uid('tx');
+      delete reg.volumenUnidad;
+      S.hemoTransfusiones = (S.hemoTransfusiones || []).concat([Object.assign(reg, { id, unidadId, fecha: ahora, comp: u.comp, especie: u.especie, grupoUnidad: u.grupo, motivosCompatibilidad: c.motivos, veterinario: vet.nombre, veterinarioId: vet.id, matricula: vet.matricula || '' })]);
+      S.fichaClinica = (S.fichaClinica || []).concat([{ id: uid('fc'), tipo: 'transfusion', fecha: ahora, transfusionId: id, animal: { pacienteId: p.id, nombre: p.nombre, especie: p.especie }, veterinario: { nombre: vet.nombre, matricula: vet.matricula || '' }, detalle: u.comp + ' ' + u.grupo + ' · ' + reg.volumen + ' ml · ' + H().REACCIONES[reg.reaccion] }]);
+      return A.hemoEvento(unidadId, 'transfusion', 'Transfundida a ' + p.nombre + ' (' + reg.volumen + ' ml) por ' + vet.nombre + (reg.reaccion !== 'ninguna' ? ' · ' + H().REACCIONES[reg.reaccion].toLowerCase() : ''), { estado: 'transfundida', pacienteId: p.id });
+    },
+    /* Solicitud de unidades a la red EISPLUS. */
+    solicitarHemo(datos) {
+      const e = H().validarSolicitud(datos);
+      if (e.length) throw new (H().ErrorHemo)(e[0]);
+      const s = Object.assign({ id: uid('sh'), fecha: new Date().toISOString(), usuario: S.usuarioActivo, estado: 'enviada', unidades: [], urgencia: 'normal' }, datos);
+      S.hemoSolicitudes = (S.hemoSolicitudes || []).concat([s]); save(); return s;
+    },
+    /* Asigna una unidad de otra sede a la solicitud: se traslada a esta clínica y, si la solicitud es para un paciente, queda reservada. */
+    asignarHemo(solicitudId, unidadId) {
+      const s = (S.hemoSolicitudes || []).find((x) => x.id === solicitudId), u = byId('hemo', unidadId);
+      if (!s || !['enviada', 'parcial'].includes(s.estado)) throw new (H().ErrorHemo)('La solicitud no está abierta');
+      if (!H().candidatas([u], s, new Date()).length) throw new (H().ErrorHemo)('La unidad no corresponde a la solicitud o no está disponible');
+      const origen = u.ubicacion;
+      A.hemoEvento(unidadId, 'traslado', 'Asignada a la solicitud de esta clínica desde ' + origen, {});
+      A.hemoEvento(unidadId, 'traslado', 'Recibida en cadena de frío', { ubicacion: 'Esta clínica' });
+      if (s.pacienteId) A.hemoEvento(unidadId, 'reserva', 'Reservada para ' + paciente(s.pacienteId).nombre + ' (solicitud a la red)', { estado: 'reservada', pacienteId: s.pacienteId });
+      s.unidades = s.unidades.concat([{ unidadId, sede: origen, fecha: new Date().toISOString() }]);
+      s.estado = s.unidades.length >= s.cantidad ? 'recibida' : 'parcial';
+      save(); return s;
+    },
+    cancelarSolicitudHemo(id, motivo) { const s = S.hemoSolicitudes.find((x) => x.id === id); Object.assign(s, { estado: 'cancelada', cancelacion: { fecha: new Date().toISOString(), por: S.usuarioActivo, motivo: motivo || '' } }); save(); },
+    /* Solo con DEMO_MODE: una sede de la red ofrece una unidad que cubre la solicitud. */
+    simularRespuestaRed(id) {
+      if (!S.config.demoMode) return null;
+      const s = S.hemoSolicitudes.find((x) => x.id === id), ahora = new Date();
+      const vence = new Date(ahora.getTime() + (s.comp === 'Plasma fresco congelado' ? 300 : s.comp === 'Plaquetas' ? 4 : 30) * 864e5).toISOString();
+      const u = { id: 'HC-0' + (500 + S.hemo.length), comp: s.comp, especie: s.especie, grupo: s.grupo || H().GRUPOS[s.especie][0], volumen: s.especie === 'Felino' ? 50 : 250, donante: 'Donante de la red (' + s.especie + ')', ubicacion: 'Banco de sangre EISPLUS', extraccion: ahora.toISOString(), vence, estado: 'disponible', pacienteId: null,
+        eventos: [{ fecha: ahora.toISOString(), tipo: 'extraccion', texto: 'Unidad ofrecida por la red para la solicitud', lugar: 'Banco de sangre EISPLUS' }] };
+      S.hemo.push(u); save(); return u;
+    },
     hemoEvento(id, tipo, texto, cambios) {
       const u = byId('hemo', id);
       Object.assign(u, cambios || {});
@@ -577,6 +638,6 @@
     veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
-    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, RES_LABEL, A,
+    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, reservasPorVencer, RES_LABEL, A,
   };
 })();
