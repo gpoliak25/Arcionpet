@@ -381,6 +381,35 @@
       },
       down(s) { delete s.aliados; delete s.aliadoRecomendaciones; return s; },
     },
+    {
+      de: 21, a: 22, descripcion: 'Recordatorios a tutores: consentimiento (Ley 25.326), reglas de la clínica, cola de envíos y calendario de salud de ejemplo',
+      up(s) {
+        const hace = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString(); };
+        const CONS = { t1: { consentimiento: true, fecha: hace(120), medio: 'escrito', canales: ['email', 'whatsapp'], baja: null }, t2: { consentimiento: true, fecha: hace(60), medio: 'verbal', canales: ['email'], baja: null } };
+        s.tutores = s.tutores.map((t) => Object.assign({ recordatorios: CONS[t.id] || { consentimiento: false, fecha: null, medio: null, canales: ['email'], baja: null } }, t));
+        s.config = Object.assign({}, s.config, { recordatorios: {
+          anticipacionDias: [15, 7, 1], turnoHoras: [48, 2], canales: { email: true, whatsapp: false, sms: false }, whatsappPlantillasAprobadas: false,
+          horario: { desde: '09:00', hasta: '20:00' }, reintentos: { max: 3, esperaMin: 30 }, urlPortal: 'https://portal.example.com/arcionpet', proveedorEmail: '',
+        } });
+        s.recordatorios = [];
+        const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+        const pac = (id) => (s.pacientes || []).some((p) => p.id === id);
+        const items = [
+          ['cs-v22-1', 'p1', 'fa-vac-02', 'Vacuna antirrábica', 'Vacunas', 6],
+          ['cs-v22-2', 'p3', 'fa-anti-01', 'Antiparasitario interno', 'Antiparasitarios', 2],
+          ['cs-v22-3', 'p5', null, 'Control cardiológico', 'Control', 12],
+        ].filter((x) => pac(x[1])).map(([id, pacienteId, productoId, nombre, categoria, d]) => ({ id, pacienteId, productoId, nombre, categoria, fecha: dia(d), origen: 'ejemplo', estado: 'pendiente', creado: hace(1) }));
+        s.calendarioSalud = (s.calendarioSalud || []).concat(items);
+        return s;
+      },
+      down(s) {
+        s.tutores = s.tutores.map((t) => { const c = Object.assign({}, t); delete c.recordatorios; return c; });
+        s.config = Object.assign({}, s.config); delete s.config.recordatorios;
+        delete s.recordatorios;
+        s.calendarioSalud = (s.calendarioSalud || []).filter((c) => !String(c.id).startsWith('cs-v22-'));
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

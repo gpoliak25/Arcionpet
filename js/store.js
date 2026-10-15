@@ -134,6 +134,18 @@
     return rows;
   }
 
+  /* ---------- Recordatorios ---------- */
+  const R = () => Dominio.recordatorios;
+  const cfgRec = () => (S.config || {}).recordatorios || {};
+  const ctxRec = () => ({ pacientes: S.pacientes, tutores: S.tutores, calendario: S.calendarioSalud || [], turnos: S.turnos, pelTurnos: S.pelTurnos || [], config: cfgRec(), ahora: new Date().toISOString() });
+  /* Adaptadores de canal. Con DEMO_MODE el envío es simulado; sin él, hace falta un proveedor configurado. */
+  function enviarPorCanal(r, canal) {
+    if (S.config.demoMode) return { ok: true, entregado: canal !== 'sms', simulado: true };
+    if (canal === 'email' && !cfgRec().proveedorEmail) return { ok: false, sinCanal: true, error: 'No hay un proveedor de email configurado' };
+    if (canal === 'whatsapp') return { ok: false, sinCanal: true, error: 'WhatsApp Business sin integrar' };
+    if (canal === 'sms') return { ok: false, sinCanal: true, error: 'SMS sin integrar' };
+    return { ok: false, sinCanal: true, error: 'Canal sin integrar' };
+  }
   const H = () => Dominio.hemo;
   const AL = () => Dominio.aliados;
   const aliado = (id) => (S.aliados || []).find((x) => x.id === id) || null;
@@ -236,7 +248,7 @@
     items.forEach((it) => {
       const p = producto(it.productoId);
       if (!p || !p.intervaloDias) return;
-      const d = new Date(fecha); d.setDate(d.getDate() + p.intervaloDias);
+      const d = new Date(fecha); d.setDate(d.getDate() + Dominio.recordatorios.intervaloDosis(p, paciente(pacienteId), fecha));
       // una aplicación nueva reemplaza la próxima dosis pendiente del mismo producto
       S.calendarioSalud.filter((c) => c.pacienteId === pacienteId && c.productoId === p.id && c.estado === 'pendiente').forEach((c) => { c.estado = 'reemplazada'; });
       S.calendarioSalud.push({ id: uid('cs'), pacienteId, productoId: p.id, nombre: p.nombre, categoria: p.categoria, fecha: d.toISOString().slice(0, 10), origen, estado: 'pendiente', creado: fecha });
@@ -388,6 +400,48 @@
       let t = TU().reprogramar(S.turnos[i], fecha, ctxTurnos(), (opciones && opciones.portal) ? 'tutor' : S.usuarioActivo);
       if (opciones && opciones.portal) t = Object.assign(t, { estado: 'pendiente', origen: 'portal' });
       S.turnos[i] = t; save(); return t;
+    },
+    /* Sincroniza la cola con lo planificado y envía lo que está en fecha (lo llama el planificador cada minuto). */
+    procesarRecordatorios() {
+      if (soloLectura || !S.config || !S.config.recordatorios) return 0;
+      const ahora = new Date().toISOString();
+      const antes = JSON.stringify(S.recordatorios || []);
+      let cola = R().sincronizar(S.recordatorios || [], R().planificar(ctxRec()), ahora);
+      cola = R().procesar(cola, ahora, cfgRec(), (r, canal) => {
+        const p = paciente(r.pacienteId), t = tutor(r.tutorId);
+        r.texto = R().mensaje(r, { config: cfgRec(), tutor: t, paciente: p, clinica: Store.clinica });
+        return enviarPorCanal(r, canal);
+      });
+      if (JSON.stringify(cola) === antes) return 0;
+      S.recordatorios = cola; guardarSilencioso();
+      return cola.length;
+    },
+    /* Consentimiento del tutor para recibir recordatorios (Ley 25.326) y baja. */
+    consentimientoRecordatorios(tutorId, { consentimiento, medio, canales }) {
+      const t = tutor(tutorId);
+      if (consentimiento && !['verbal', 'escrito', 'portal'].includes(medio)) throw new Error('Indicá cómo dio el consentimiento');
+      if (consentimiento && !(canales || []).length) throw new Error('Elegí al menos un canal');
+      t.recordatorios = consentimiento ? { consentimiento: true, fecha: new Date().toISOString(), medio, canales, baja: null, registradoPor: S.usuarioActivo } : Object.assign({}, t.recordatorios, { consentimiento: false });
+      save(); A.procesarRecordatorios();
+    },
+    bajaRecordatorios(tutorId, via) {
+      const t = tutor(tutorId);
+      t.recordatorios = Object.assign({}, t.recordatorios, { baja: new Date().toISOString(), viaBaja: via || 'enlace' });
+      save(); A.procesarRecordatorios();
+    },
+    /* Calendario de salud: el veterinario agrega controles, cambia fechas o cancela. */
+    agregarItemSalud(pacienteId, { nombre, categoria, fecha }) {
+      if (rol() !== 'veterinario') throw new Error('Solo el veterinario edita el calendario de salud');
+      if (!String(nombre || '').trim() || !/^\d{4}-\d{2}-\d{2}$/.test(fecha || '')) throw new Error('Completá qué corresponde y la fecha');
+      const it = { id: uid('cs'), pacienteId, productoId: null, nombre: nombre.trim(), categoria: categoria || 'Control', fecha, origen: 'indicacion', estado: 'pendiente', creado: new Date().toISOString(), creadoPor: S.usuarioActivo };
+      S.calendarioSalud = (S.calendarioSalud || []).concat([it]); save(); A.procesarRecordatorios(); return it;
+    },
+    editarItemSalud(id, { fecha, estado, motivo }) {
+      if (rol() !== 'veterinario') throw new Error('Solo el veterinario edita el calendario de salud');
+      const it = S.calendarioSalud.find((x) => x.id === id);
+      if (fecha) it.fecha = fecha;
+      if (estado) Object.assign(it, { estado, motivo: motivo || '', cerrado: new Date().toISOString(), cerradoPor: S.usuarioActivo });
+      save(); A.procesarRecordatorios(); return it;
     },
     /* ---------- Aliados ---------- */
     guardarAliado(datos) {
@@ -698,6 +752,7 @@
     veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
-    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, reservasPorVencer, aliado, aliadosVisibles, RES_LABEL, A,
+    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, reservasPorVencer, aliado, aliadosVisibles, ctxRec,
+    get recordatoriosCfg() { return Dominio.recordatorios.config(cfgRec()); }, RES_LABEL, A,
   };
 })();

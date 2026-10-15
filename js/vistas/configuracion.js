@@ -4,7 +4,7 @@
   const { S, pageHead, ui } = VC;
   const C = () => Dominio.configuracion;
   const ROLES = () => Dominio.permisos.ROLES;
-  const TABS = [['clinica', 'Datos de la clínica'], ['usuarios', 'Usuarios y roles'], ['umbrales', 'Umbrales'], ['sla', 'SLA'], ['facturacion', 'Facturación'], ['modulos', 'Módulos y flags']];
+  const TABS = [['clinica', 'Datos de la clínica'], ['usuarios', 'Usuarios y roles'], ['umbrales', 'Umbrales'], ['sla', 'SLA'], ['facturacion', 'Facturación'], ['recordatorios', 'Recordatorios'], ['modulos', 'Módulos y flags']];
 
   /* Guarda una parte de la configuración, la valida y la registra en la auditoría. */
   function guardar(seccion, datos) {
@@ -58,6 +58,20 @@
         '<div class="section-title">Puntos de venta</div><div id="cf-pvs">' + f.puntosVenta.map((p) => '<div class="form-grid" data-pv style="margin-bottom:8px"><div class="field"><label>Número</label><input type="number" min="1" max="99999" data-k="numero" value="' + p.numero + '"></div><div class="field"><label>Nombre</label><input data-k="nombre" value="' + esc(p.nombre) + '"></div></div>').join('') + '</div>' +
         '<button class="btn sm" id="cf-pv-add">' + icon('plus') + 'Agregar punto de venta</button>' + pie('cf-fact');
     }
+    if (tab === 'recordatorios') {
+      const r = Store.recordatoriosCfg, Rr = Dominio.recordatorios;
+      cuerpo = ayuda('Avisos automáticos a los tutores que dieron su consentimiento. Se envían solos, en el horario permitido, sin duplicados y con reintentos.') + '<div class="form-grid">' +
+        campo('anticipacionDias', 'Avisos de vacunas, antiparasitarios y controles (días antes, separados por coma)', r.anticipacionDias.join(', ')) +
+        campo('turnoHoras', 'Avisos de turnos (horas antes, separados por coma)', r.turnoHoras.join(', ')) +
+        campo('desde', 'Enviar desde (hora)', r.horario.desde, { type: 'time' }) + campo('hasta', 'Enviar hasta (hora)', r.horario.hasta, { type: 'time' }) +
+        campo('max', 'Reintentos si falla', r.reintentos.max, { type: 'number' }) + campo('esperaMin', 'Espera entre reintentos (min, se duplica)', r.reintentos.esperaMin, { type: 'number' }) +
+        '<div class="field full"><label>Canales</label><div class="chips">' + Object.entries(Rr.CANALES).map(([k, l]) => '<label class="chip" style="cursor:pointer"><input type="checkbox" name="c_' + k + '"' + (r.canales[k] ? ' checked' : '') + ' style="margin-right:4px">' + l + '</label>').join('') + '</div></div>' +
+        '<label class="cfg-switch full"><input type="checkbox" name="whatsappPlantillasAprobadas"' + (r.whatsappPlantillasAprobadas ? ' checked' : '') + '><span>Plantillas de WhatsApp Business aprobadas (hasta entonces WhatsApp no se usa)</span></label>' +
+        campo('proveedorEmail', 'Proveedor de email (servicio de envío)', r.proveedorEmail || '', { ph: 'Pendiente de configurar', full: true }) +
+        campo('urlPortal', 'Enlace al portal del tutor', r.urlPortal, { full: true }) +
+        Object.entries(r.plantillas).map(([k, p]) => '<div class="field full"><label>Plantilla: ' + Rr.TIPOS[k].toLowerCase() + '</label><textarea name="p_' + k + '" style="min-height:56px">' + esc(p) + '</textarea></div>').join('') +
+        '<p class="small muted full" style="margin:0">Variables: {tutor}, {mascota}, {item}, {fecha}, {hora}, {enlace}. Al final se agregan los datos de la clínica y el enlace para darse de baja.</p></div>' + pie('cf-rec');
+    }
     if (tab === 'modulos') {
       cuerpo = ayuda('Los módulos deshabilitados desaparecen del menú y sus pantallas dejan de estar disponibles. Sus datos se conservan.') +
         Object.entries(C().MODULOS).map(([k, l]) => '<label class="cfg-switch"><input type="checkbox" name="mod_' + k + '"' + (cfg.modulos[k] !== false ? ' checked' : '') + '><span>' + l + '</span></label>').join('') +
@@ -81,6 +95,15 @@
           const f = formData(form);
           const puntosVenta = [...form.querySelectorAll('[data-pv]')].map((row) => ({ numero: Number(row.querySelector('[data-k="numero"]').value), nombre: row.querySelector('[data-k="nombre"]').value.trim() })).filter((p) => p.numero || p.nombre);
           if (guardar('facturacion', { facturacion: { modo: 'homologacion', proveedor: f.proveedor.trim(), puntosVenta, puntoVenta: Number(f.puntoVenta) } })) App.render();
+        });
+        b('#cf-rec', () => {
+          const f = formData(form), lista = (v) => String(v).split(',').map((x) => Number(x.trim())).filter((x) => !isNaN(x) && String(x) !== '');
+          const nuevo = { anticipacionDias: lista(f.anticipacionDias), turnoHoras: lista(f.turnoHoras), horario: { desde: f.desde, hasta: f.hasta }, reintentos: { max: num(f.max), esperaMin: num(f.esperaMin) },
+            canales: Object.fromEntries(Object.keys(Dominio.recordatorios.CANALES).map((k) => [k, !!f['c_' + k]])), whatsappPlantillasAprobadas: !!f.whatsappPlantillasAprobadas, proveedorEmail: f.proveedorEmail.trim(), urlPortal: f.urlPortal.trim(),
+            plantillas: Object.fromEntries(Object.keys(Dominio.recordatorios.TIPOS).map((k) => [k, f['p_' + k]])) };
+          const e = Dominio.recordatorios.validarConfig(nuevo);
+          if (e.length) return toast(e[0], 'warn');
+          if (guardar('recordatorios', { recordatorios: nuevo })) Store.A.procesarRecordatorios();
         });
         b('#cf-sla', () => { const f = formData(form); guardar('sla', { sla: { triage: num(f.triage), derivaciones: num(f.derivaciones), interconsultas: num(f.interconsultas) } }); });
         b('#cf-modulos', () => {

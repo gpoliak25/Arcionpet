@@ -27,6 +27,7 @@
     ] },
     { id: 'servicios', g: 'Servicios', modulo: 'servicios', items: [
       { h: '#/turnos', l: 'Turnos', i: 'calendar', m: 'turnos', c: () => S().turnos.filter((t) => t.estado === 'pendiente').length },
+      { h: '#/recordatorios', l: 'Recordatorios', i: 'send', m: 'turnos', c: () => (S().recordatorios || []).filter((r) => r.estado === 'fallo').length, hot: true },
     ] },
     { id: 'peluqueria', g: 'Peluquería', modulo: 'peluqueria', items: [
       { h: '#/peluqueria', l: 'Agenda', i: 'scissors', m: 'peluqueria', c: () => (S().pelTurnos || []).filter((t) => t.estado === 'confirmado' && Store.isToday(t.fecha)).length },
@@ -49,7 +50,7 @@
     ] },
   ];
   /* Rutas que pertenecen a un módulo opcional (se ocultan si está deshabilitado en Configuración). */
-  const MODULO_OPCIONAL = { petshop: 'inventario', farmacia: 'inventario', inventario: 'inventario', ventas: 'inventario', recetas: 'inventario', turnos: 'servicios', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria', aliados: 'aliados', 'aliados-recomendaciones': 'aliados' };
+  const MODULO_OPCIONAL = { petshop: 'inventario', farmacia: 'inventario', inventario: 'inventario', ventas: 'inventario', recetas: 'inventario', turnos: 'servicios', recordatorios: 'servicios', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria', aliados: 'aliados', 'aliados-recomendaciones': 'aliados' };
   const PLEGADAS_KEY = 'arcionpet-nav-plegadas';
   let plegadas = [];
   try { plegadas = JSON.parse(localStorage.getItem(PLEGADAS_KEY) || '[]'); } catch (e) { /* sin storage */ }
@@ -65,6 +66,7 @@
     ventas: (id) => (id === 'nueva' ? Views.ventaNueva() : Views.ventas()),
     tutores: (id) => (id ? Views.tutorDetalle(id) : Views.tutores()),
     turnos: () => Views.turnos(),
+    recordatorios: () => Views.recordatorios(),
     peluqueria: () => Views.peluqueria(),
     'peluqueria-fichas': () => Views.peluqueriaFichas(),
     'peluqueria-servicios': () => Views.peluqueriaServicios(),
@@ -84,7 +86,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', petshop: 'petshop', farmacia: 'farmacia', recetas: 'recetas', configuracion: 'configuracion', ventas: 'ventas', turnos: 'turnos', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria', aliados: 'aliados', 'aliados-recomendaciones': 'aliados', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', inventario: 'inventario', petshop: 'petshop', farmacia: 'farmacia', recetas: 'recetas', configuracion: 'configuracion', ventas: 'ventas', turnos: 'turnos', recordatorios: 'turnos', peluqueria: 'peluqueria', 'peluqueria-fichas': 'peluqueria', 'peluqueria-servicios': 'peluqueria', aliados: 'aliados', 'aliados-recomendaciones': 'aliados', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();
@@ -220,6 +222,11 @@
     return !!ROUTES[name] && Store.puede(MODULO[name]) && Store.moduloHabilitado(MODULO_OPCIONAL[name]);
   }
   window.App = { render, puedeRuta };
+
+  /* Planificador de recordatorios: corre al abrir y cada minuto. Si un envío falla, queda en la cola para reintentar. */
+  function planificador() { try { Store.A.procesarRecordatorios(); } catch (e) { console.warn('Recordatorios:', e.message); } }
+  setTimeout(planificador, 2500);
+  setInterval(planificador, 60000);
   if (!location.hash) location.hash = '#/inicio'; else render();
 
   /* Al iniciar, la CNN analiza los estudios que todavía no tienen resultado. */
