@@ -8,7 +8,8 @@
   const usuarioNombre = (id) => ((S().usuarios || []).find((u) => u.id === id) || {}).nombre || id || '';
   const TIPO_DECL = { vencimiento: 'Vencimiento', merma: 'Merma', rotura: 'Rotura', robo: 'Robo o hurto', venta_rve: 'Venta con RVE (art. 11)', autoconsumo: 'Autoconsumo de botiquín (art. 20)', anulacion: 'Anulación de operación (art. 8 c)' };
   const plazoDecl = (d) => { if (d.tipo === 'venta_rve' || d.tipo === 'autoconsumo') return 'en tiempo real'; const r = I().diasHasta(d.limite, hoy()); return r < 0 ? 'plazo vencido' : r === 0 ? 'vence hoy' : 'quedan ' + r + ' días'; };
-  const TIPO_MOV = { ingreso: 'Ingreso', venta: 'Venta', anulacion: 'Anulación de venta', ajuste: 'Ajuste', baja_vencimiento: 'Baja por vencimiento' };
+  const TIPO_MOV = { ingreso: 'Ingreso', venta: 'Venta', anulacion: 'Anulación de venta', devolucion: 'Devolución de venta', ajuste: 'Ajuste', baja_vencimiento: 'Baja por vencimiento', autoconsumo: 'Autoconsumo de botiquín' };
+  const margenTxt = (p) => { const mg = I().margen(p); return mg ? pesos(p.costo) + ' <span class="sp">· ' + mg.pct.toLocaleString('es-AR') + ' %</span>' : '<span class="muted">—</span>'; };
 
   function catalogoActual() {
     const vis = Store.catalogosVisibles();
@@ -41,7 +42,9 @@
     prods.forEach((p) => { est[p.id] = I().estado(p, S().lotes, hoy()); });
     const al = Store.inventarioAlertas();
     const conAlerta = (p) => est[p.id].bajoMinimo || est[p.id].porVencer || est[p.id].vencidos > 0;
-    const lista = prods.filter((p) => (!ui.invCateg || p.categoria === ui.invCateg) && (!ui.invAlertas || conAlerta(p)) && match(ui.qInv, p.nombre, p.marca, p.presentacion, p.sku, p.categoria, p.principioActivo))
+    const vista = ui.invVista && ui.invVista[cat] || 'productos';
+    const botiquin = cat === 'farmacia' && ['veterinario', 'administracion'].includes(Store.rol());
+    const lista = prods.filter((p) => (!ui.invCateg || p.categoria === ui.invCateg) && (!ui.invAlertas || conAlerta(p)) && match(ui.qInv, p.nombre, p.marca, p.presentacion, p.sku, p.codigoBarras, p.categoria, p.principioActivo))
       .sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nombre.localeCompare(b.nombre));
     const vencidos = al.vencidos.filter((l) => (Store.producto(l.productoId) || {}).catalogo === cat);
     const porVencer = al.porVencer.filter((l) => (Store.producto(l.productoId) || {}).catalogo === cat);
@@ -53,8 +56,8 @@
     const rows = lista.map((p) => {
       const e = est[p.id];
       return '<tr class="clickable" data-p="' + p.id + '"><td><div class="strong">' + esc(p.nombre) + etiquetas(p) + '</div><div class="sp">' + esc([p.marca, p.presentacion].filter(Boolean).join(' · ')) + ' · ' + esc(p.sku || '') + '</div></td>' +
-        '<td>' + esc(p.categoria) + '</td><td class="nowrap">' + pesos(p.precio) + '</td>' +
-        '<td class="nowrap"><span class="strong">' + e.vendible + '</span> <span class="sp">/ mín ' + p.stockMinimo + '</span> ' + stockBadge(e, p) + (e.vencidos ? '<div class="sp" style="color:var(--red)">+' + e.vencidos + ' vencido' + (e.vencidos > 1 ? 's' : '') + '</div>' : '') + '</td>' +
+        '<td>' + esc(p.categoria) + '</td><td class="nowrap">' + pesos(p.precio) + '</td>' + (admin ? '<td class="nowrap">' + margenTxt(p) + '</td>' : '') +
+        '<td class="nowrap"><span class="strong">' + e.vendible + '</span> <span class="sp">/ mín ' + p.stockMinimo + '</span> ' + stockBadge(e, p) + (e.bajoMinimo ? '<div class="sp" style="color:#B45309">Reponer ' + I().sugerenciaReposicion(p, e) + ' u.' + (p.proveedor ? ' · ' + esc(p.proveedor) : '') + '</div>' : '') + (e.vencidos ? '<div class="sp" style="color:var(--red)">+' + e.vencidos + ' vencido' + (e.vencidos > 1 ? 's' : '') + '</div>' : '') + '</td>' +
         (cat === 'farmacia' ? '<td class="nowrap">' + venceBadge(e.proximoVence) + '</td>' : '') +
         '<td class="actions">' + (editar ? '<button class="icon-btn" data-ing="' + p.id + '" title="Ingresar mercadería">' + icon('plus') + '</button>' : '') + '<button class="icon-btn" title="Ver detalle">' + icon('eye') + '</button></td></tr>';
     }).join('');
@@ -63,6 +66,8 @@
     const html = pageHead(cat === 'farmacia' && catFijo ? 'drop' : 'package', titulo[0], titulo[1],
       (editar ? '<button class="btn" id="btn-ing">' + icon('plus') + 'Ingresar mercadería</button>' : '') + (admin ? '<button class="btn primary" id="btn-prod">' + icon('plus') + 'Nuevo producto</button>' : '')) +
       tabs +
+      '<div class="tabs">' + [['productos', 'Productos'], ['movimientos', 'Movimientos']].concat(botiquin ? [['botiquin', 'Botiquín (autoconsumo)']] : []).map(([k, l]) => '<button data-vista="' + k + '" class="' + (vista === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
+      (vista === 'movimientos' ? movimientosHtml(cat) : vista === 'botiquin' && botiquin ? botiquinHtml() :
       '<div class="grid kpis">' +
       kpi('package', '', 'Productos', prods.length, I().CATEGORIAS[cat].length + ' categorías') +
       kpi('file', 'violet', 'Valor del stock', pesos(I().valorStock(prods, S().lotes, hoy())), 'a precio de venta') +
@@ -73,26 +78,74 @@
         vencidos.map((l) => { const p = Store.producto(l.productoId); return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="grow">' + esc(p.nombre) + ' · lote ' + esc(l.lote) + ' · venció el ' + fDate(l.vence) + ' · ' + l.cantidad + ' u.</span>' + (ajustar ? '<button class="btn sm" data-baja="' + l.id + '">Dar de baja</button>' : '') + '</div>'; }).join('') + '</div>' : '') +
       (decl.length ? '<div class="callout violet" style="margin-bottom:14px;display:block">' + icon('clipboard') + ' <b>Pendiente de declarar en SIGTRAZAVET</b> (Res. SENASA 654/2026: ventas con RVE en tiempo real, art. 11; contingencias dentro de los 10 días, art. 12; anulaciones dentro de los 20 días, art. 8 c).' +
         decl.map((d) => { const p = Store.producto(d.productoId) || {}; return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="grow">' + esc(TIPO_DECL[d.tipo] || d.tipo) + ' · ' + esc(p.nombre) + ' · lote ' + esc(d.lote) + ' · ' + d.cantidad + ' u.' + (d.cuve ? ' · CUVE ' + esc(d.cuve) : '') + ' · <b>' + plazoDecl(d) + '</b></span>' + (ajustar ? '<button class="btn sm" data-decl="' + d.id + '">Marcar como declarada</button>' : '') + '</div>'; }).join('') + '</div>' : '') +
-      '<div class="toolbar">' + searchBox('q-inv', 'Buscar por producto, marca, código o principio activo…', ui.qInv || '') +
+      '<div class="toolbar">' + searchBox('q-inv', 'Buscar por producto, marca, SKU, código de barras o principio activo…', ui.qInv || '') +
       '<select class="filter" id="f-categ"><option value="">Todas las categorías</option>' + I().CATEGORIAS[cat].map((c) => '<option' + (ui.invCateg === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
       '<div class="seg"><button data-al="0" class="' + (ui.invAlertas ? '' : 'on') + '">Todos</button><button data-al="1" class="' + (ui.invAlertas ? 'on' : '') + '">Con alertas</button></div></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th>' + (cat === 'farmacia' ? '<th>Próximo vencimiento</th>' : '') + '<th class="actions"></th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="6">' + empty('package', 'Sin productos', '<span class="small">Probá con otro filtro.</span>') + '</td></tr>') + '</tbody></table></div>';
+      '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th>' + (admin ? '<th>Costo · margen</th>' : '') + '<th>Stock</th>' + (cat === 'farmacia' ? '<th>Próximo vencimiento</th>' : '') + '<th class="actions"></th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="7">' + empty('package', 'Sin productos', '<span class="small">Probá con otro filtro.</span>') + '</td></tr>') + '</tbody></table></div>');
 
     return {
       html, mount(root) {
-        bindSearch(root, 'q-inv', 'qInv', () => App.render(true));
+        on(root, '[data-vista]', 'click', (el) => { ui.invVista = Object.assign({}, ui.invVista, { [cat]: el.dataset.vista }); App.render(); });
         on(root, '[data-cat]', 'click', (el) => { ui.invCat = el.dataset.cat; ui.invCateg = ''; App.render(); });
+        const fm = root.querySelector('#f-mov'); if (fm) fm.onchange = (e) => { ui.invMov = e.target.value; App.render(); };
+        const ba = root.querySelector('#btn-auto'); if (ba) ba.onclick = () => autoconsumoForm();
+        const bi = root.querySelector('#btn-ing'); if (bi) bi.onclick = () => ingresoForm();
+        const bp = root.querySelector('#btn-prod'); if (bp) bp.onclick = () => productoForm();
+        if (vista !== 'productos') return;
+        bindSearch(root, 'q-inv', 'qInv', () => App.render(true));
         on(root, '[data-al]', 'click', (el) => { ui.invAlertas = el.dataset.al === '1'; App.render(); });
         root.querySelector('#f-categ').onchange = (e) => { ui.invCateg = e.target.value; App.render(); };
         on(root, '[data-p]', 'click', (el) => productoDetalle(el.dataset.p));
         on(root, '[data-ing]', 'click', (el, e) => { e.stopPropagation(); ingresoForm(el.dataset.ing); });
         on(root, '[data-baja]', 'click', (el) => bajaVencidoConfirm(el.dataset.baja));
         on(root, '[data-decl]', 'click', (el) => declararForm(el.dataset.decl));
-        const bi = root.querySelector('#btn-ing'); if (bi) bi.onclick = () => ingresoForm();
-        const bp = root.querySelector('#btn-prod'); if (bp) bp.onclick = () => productoForm();
       },
     };
+  }
+
+  /* Movimientos del catálogo: cada ingreso, venta, devolución, ajuste, baja y autoconsumo, con usuario y referencia. */
+  function movimientosHtml(cat) {
+    const ids = new Set(S().productos.filter((p) => p.catalogo === cat).map((p) => p.id));
+    const movs = S().movimientos.filter((mv) => ids.has(mv.productoId) && (!ui.invMov || mv.tipo === ui.invMov)).slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 200);
+    return '<div class="toolbar"><select class="filter" id="f-mov"><option value="">Todos los movimientos</option>' + Object.entries(TIPO_MOV).map(([k, v]) => '<option value="' + k + '"' + (ui.invMov === k ? ' selected' : '') + '>' + v + '</option>').join('') + '</select><span class="small muted">Últimos 200</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Movimiento</th><th>Lote</th><th style="text-align:right">Cantidad</th><th>Usuario</th><th>Detalle</th></tr></thead><tbody>' +
+      (movs.map((mv) => { const l = S().lotes.find((x) => x.id === mv.loteId) || {}, p = Store.producto(mv.productoId) || {}; return '<tr><td class="nowrap">' + fShort(mv.fecha) + '</td><td>' + esc(p.nombre) + '</td><td>' + (TIPO_MOV[mv.tipo] || esc(mv.tipo)) + (mv.motivo ? ' · ' + esc(I().MOTIVOS_AJUSTE[mv.motivo]) : '') + '</td><td>' + esc(l.lote || '—') + '</td><td class="strong" style="text-align:right;color:' + (mv.cantidad < 0 ? 'var(--red)' : 'var(--emerald)') + '">' + (mv.cantidad > 0 ? '+' : '') + mv.cantidad + '</td><td>' + esc(usuarioNombre(mv.usuario)) + '</td><td class="sp">' + esc([mv.proveedor, mv.costoUnitario != null ? 'costo ' + pesos(mv.costoUnitario) : '', mv.nota, mv.ref].filter(Boolean).join(' · ')) + '</td></tr>'; }).join('') ||
+        '<tr><td colspan="7">' + empty('clipboard', 'Sin movimientos', '') + '</td></tr>') + '</tbody></table></div>';
+  }
+  /* Botiquín profesional (Res. SENASA 654/2026, art. 20): uso o entrega sin RVE, registrado en la ficha clínica. */
+  function botiquinHtml() {
+    const regs = (S().fichaClinica || []).filter((f) => f.tipo === 'botiquin').slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+    return '<div class="callout violet" style="display:block;margin-bottom:14px">' + icon('clipboard') + ' El veterinario puede aplicar o entregar productos de su botiquín sin emitir RVE: queda registrado en la ficha clínica con los datos de la receta de mascotas, se descuenta como <b>autoconsumo</b> y, si el producto está alcanzado por SIGTRAZAVET, se genera la declaración (art. 20).' +
+      (Store.rol() === 'veterinario' ? '<div style="margin-top:10px"><button class="btn violet sm" id="btn-auto">' + icon('plus') + 'Registrar autoconsumo</button></div>' : '') + '</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Animal</th><th>Titular</th><th>Producto</th><th>Indicación</th><th>Lotes</th><th>Veterinario</th></tr></thead><tbody>' +
+      (regs.map((r) => '<tr><td class="nowrap">' + fShort(r.fecha) + '</td><td><a href="#/pacientes/' + r.animal.pacienteId + '">' + esc(r.animal.nombre) + '</a> <span class="sp">(' + esc(r.animal.especie) + ')</span></td><td>' + esc(r.titular.apellido + ', ' + r.titular.nombre) + '</td><td>' + r.items.map((i) => esc(i.descripcion) + ' <span class="sp">× ' + i.cantidad + '</span>').join('<br>') + '</td><td class="sp">' + r.items.map((i) => esc(i.dosis + ' ' + i.frecuencia + ' · ' + i.duracion + ' · vía ' + i.via)).join('<br>') + (r.motivo ? '<div>' + esc(r.motivo) + '</div>' : '') + '</td><td class="sp">' + esc(r.lotes.map((l) => l.lote + ' ×' + l.cantidad).join(', ')) + '</td><td>' + esc(r.veterinario.nombre) + '<div class="sp">' + esc(r.veterinario.matricula) + '</div></td></tr>').join('') ||
+        '<tr><td colspan="7">' + empty('clipboard', 'Sin registros de botiquín', '') + '</td></tr>') + '</tbody></table></div>';
+  }
+  function autoconsumoForm() {
+    const pacs = S().pacientes.filter((p) => p.activo !== false).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    const prods = S().productos.filter((p) => p.catalogo === 'farmacia' && p.activo !== false && I().estado(p, S().lotes, hoy()).vendible > 0).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    openModal({
+      title: 'Autoconsumo de botiquín', wide: true,
+      body: '<div class="form-grid">' +
+        '<div class="field"><label>Mascota *</label><select name="pacienteId"><option value="">— Elegí la mascota —</option>' + pacs.map((p) => { const t = Store.tutor(p.tutorId) || {}; return '<option value="' + p.id + '">' + esc(p.nombre + ' (' + p.especie + ') · ' + t.apellido + ', ' + t.nombre) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label>Producto *</label><select name="productoId">' + prods.map((p) => '<option value="' + p.id + '">' + esc(p.nombre + ' · ' + p.presentacion) + '</option>').join('') + '</select></div>' +
+        '<div class="field"><label>Cantidad *</label><input type="number" name="cantidad" min="1" step="1" value="1"></div>' +
+        '<div class="field"><label>Dosis *</label><input name="dosis" placeholder="Ej.: 1 comprimido"></div>' +
+        '<div class="field"><label>Frecuencia *</label><input name="frecuencia" placeholder="Ej.: dosis única"></div>' +
+        '<div class="field"><label>Duración *</label><input name="duracion" placeholder="Ej.: 1 día"></div>' +
+        '<div class="field"><label>Vía *</label><select name="via">' + Dominio.ventas.VIAS.map((v) => '<option>' + v + '</option>').join('') + '</select></div>' +
+        '<div class="field full"><label>Motivo / observaciones</label><input name="motivo"></div></div>',
+      foot: '<button class="btn" data-close>Cancelar</button><button class="btn violet" id="ac-ok">Registrar</button>',
+      onMount(m) {
+        m.querySelector('#ac-ok').onclick = () => {
+          const f = formData(m);
+          if (!f.pacienteId) return toast('Elegí la mascota', 'warn');
+          try { Store.A.autoconsumo(Object.assign({}, f, { cantidad: Number(f.cantidad) })); closeModal(); toast('Autoconsumo registrado en la ficha clínica'); App.render(); }
+          catch (e) { if (e instanceof Dominio.ventas.ErrorVenta || e instanceof I().ErrorStock) toast(e.message, 'warn'); else throw e; }
+        };
+      },
+    });
   }
 
   /* Ejecuta una operación de stock y muestra el error de regla de negocio si lo hay. */
@@ -116,9 +169,10 @@
       title: 'Declaración en SIGTRAZAVET',
       body: '<p class="muted" style="margin-top:0">' + esc(TIPO_DECL[d.tipo] || d.tipo) + ' · ' + d.cantidad + ' u. de ' + esc(p.nombre) + ' (lote ' + esc(d.lote) + '). Registrá acá el número de operación que te dio SIGTRAZAVET.</p>' +
         '<div class="field"><label>N.º de operación SIGTRAZAVET</label><input name="nro" placeholder="Ej.: 2026-0001234"></div>' +
+        '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" name="dj"> <span>Declaro bajo juramento que la información cargada en SIGTRAZAVET es correcta y completa (Res. SENASA 654/2026, art. 14).</span></label>' +
         '<p class="small muted">ArcionPet no se conecta con SIGTRAZAVET: la declaración se hace en el sistema del SENASA y acá queda el registro.</p>',
       foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="dc-ok">Marcar como declarada</button>',
-      onMount(m) { m.querySelector('#dc-ok').onclick = () => { const f = formData(m); if (!f.nro) return toast('Ingresá el número de operación', 'warn'); Store.A.marcarDeclarada(id, f.nro); closeModal(); toast('Declaración registrada'); }; },
+      onMount(m) { m.querySelector('#dc-ok').onclick = () => { const f = formData(m); if (!f.nro) return toast('Ingresá el número de operación', 'warn'); intentar(() => Store.A.marcarDeclarada(id, f.nro, !!f.dj), () => { closeModal(); toast('Declaración registrada'); }); }; },
     });
   }
 
@@ -132,13 +186,17 @@
         '<div class="field"><label>Lote' + (cat === 'farmacia' ? ' *' : ' (opcional)') + '</label><input name="lote"></div>' +
         '<div class="field"><label>Vencimiento' + (cat === 'farmacia' ? ' *' : ' (opcional)') + '</label><input type="date" name="vence"></div>' +
         '<div class="field"><label>Cantidad</label><input type="number" name="cantidad" min="1" step="1" value="1"></div>' +
-        '<div class="field"><label>Remito / proveedor</label><input name="nota" placeholder="Opcional"></div>' +
+        '<div class="field"><label>Costo unitario sin IVA ($)</label><input type="number" name="costo" min="0" step="1" id="ig-costo"></div>' +
+        '<div class="field"><label>Proveedor</label><input name="proveedor" id="ig-prov"></div>' +
+        '<div class="field"><label>Remito / nota</label><input name="nota" placeholder="Opcional"></div>' +
         '</div>',
       foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="ig-ok">Ingresar</button>',
       onMount(m) {
+        const pre = () => { const p = Store.producto(m.querySelector('#ig-p').value) || {}; m.querySelector('#ig-costo').value = p.costo != null ? p.costo : ''; m.querySelector('#ig-prov').value = p.proveedor || ''; };
+        m.querySelector('#ig-p').onchange = pre; pre();
         m.querySelector('#ig-ok').onclick = () => {
           const f = formData(m);
-          const datos = { productoId: f.productoId, lote: f.lote, vence: f.vence || null, cantidad: Number(f.cantidad), nota: f.nota };
+          const datos = { productoId: f.productoId, lote: f.lote, vence: f.vence || null, cantidad: Number(f.cantidad), nota: f.nota, costoUnitario: f.costo === '' ? null : Number(f.costo), proveedor: f.proveedor.trim() };
           intentar(() => Store.A.ingresarStock(datos), () => { closeModal(); toast('Ingresaron ' + datos.cantidad + ' u. de ' + esc(Store.producto(datos.productoId).nombre)); });
         };
       },
@@ -172,9 +230,9 @@
     const dato = (k, v) => '<dt>' + k + '</dt><dd>' + (v || '<span class="muted">—</span>') + '</dd>';
     openModal({
       title: esc(p.nombre) + etiquetas(p), wide: true,
-      body: '<div class="grid halves" style="margin:0 0 16px"><dl class="dl">' + dato('Catálogo', I().CATALOGOS[p.catalogo]) + dato('Categoría', esc(p.categoria)) + dato('Marca', esc(p.marca)) + dato('Presentación', esc(p.presentacion)) + dato('Código', esc(p.sku)) +
-        (p.catalogo === 'farmacia' ? dato('Principio activo', esc(p.principioActivo)) : '') + '</dl>' +
-        '<dl class="dl">' + dato('Precio (IVA incl.)', pesos(p.precio)) + dato('Stock vendible', '<b>' + e.vendible + '</b> ' + stockBadge(e, p)) + dato('Stock mínimo', String(p.stockMinimo)) +
+      body: '<div class="grid halves" style="margin:0 0 16px"><dl class="dl">' + dato('Catálogo', I().CATALOGOS[p.catalogo]) + dato('Categoría', esc(p.categoria)) + dato('Marca', esc(p.marca)) + dato('Presentación', esc(p.presentacion)) + dato('Código', esc(p.sku)) + dato('Código de barras', esc(p.codigoBarras)) + dato('Proveedor', esc(p.proveedor)) +
+        (p.catalogo === 'farmacia' ? dato('Principio activo', esc(p.principioActivo)) + dato('Repetición', p.intervaloDias ? 'cada ' + p.intervaloDias + ' días (genera recordatorio)' : '') : '') + '</dl>' +
+        '<dl class="dl">' + dato('Precio (IVA incl.)', pesos(p.precio)) + (Store.puedeAccion('editarPrecios') ? dato('Costo · margen', margenTxt(p)) : '') + (e.bajoMinimo ? dato('Sugerencia', 'Reponer ' + I().sugerenciaReposicion(p, e) + ' u.') : '') + dato('Stock vendible', '<b>' + e.vendible + '</b> ' + stockBadge(e, p)) + dato('Stock mínimo', String(p.stockMinimo)) +
         (p.catalogo === 'farmacia' ? dato('Próximo vencimiento', venceBadge(e.proximoVence)) + dato('Venta', p.requiereReceta ? 'Bajo receta veterinaria electrónica' : 'Libre') : '') + '</dl></div>' +
         '<div class="section-title">Lotes con stock</div>' +
         (lotes.length ? '<div class="table-wrap"><table><thead><tr><th>Lote</th><th>Vencimiento</th><th>Cantidad</th><th>Ingreso</th><th class="actions"></th></tr></thead><tbody>' +
@@ -207,7 +265,11 @@
         '<div class="field"><label>Presentación</label><input name="presentacion" value="' + esc(p.presentacion || '') + '"></div>' +
         '<div class="field"><label>Código (SKU)</label><input name="sku" value="' + esc(p.sku || '') + '"></div>' +
         '<div class="field"><label>Precio con IVA ($)</label><input type="number" name="precio" min="1" step="1" value="' + esc(p.precio || '') + '"></div>' +
+        '<div class="field"><label>Costo sin IVA ($)</label><input type="number" name="costo" min="0" step="1" value="' + esc(p.costo != null ? p.costo : '') + '"></div>' +
         '<div class="field"><label>Stock mínimo</label><input type="number" name="stockMinimo" min="0" step="1" value="' + esc(p.stockMinimo) + '"></div>' +
+        '<div class="field"><label>Proveedor</label><input name="proveedor" value="' + esc(p.proveedor || '') + '"></div>' +
+        '<div class="field"><label>Código de barras (EAN-13)</label><input name="codigoBarras" inputmode="numeric" maxlength="13" value="' + esc(p.codigoBarras || '') + '"></div>' +
+        '<div class="field" data-farm><label>Repetir cada (días)</label><input type="number" name="intervaloDias" min="1" max="1095" step="1" value="' + esc(p.intervaloDias || '') + '" placeholder="Vacunas y antiparasitarios"></div>' +
         '<div class="field" data-farm><label>Principio activo</label><input name="principioActivo" value="' + esc(p.principioActivo || '') + '"></div>' +
         '<label class="full" data-farm style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="requiereReceta"' + (p.requiereReceta ? ' checked' : '') + '> Venta bajo receta veterinaria electrónica (RVE)</label>' +
         '<label class="full" data-farm style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="sigtrazavet"' + (p.sigtrazavet ? ' checked' : '') + '> Alcanzado por SIGTRAZAVET (según disposiciones de la Dirección Nacional de Sanidad Animal)</label>' +
@@ -223,6 +285,7 @@
           const f = formData(m);
           const farm = (id ? p.catalogo : f.catalogo) === 'farmacia';
           const datos = { catalogo: id ? p.catalogo : f.catalogo, categoria: f.categoria, nombre: f.nombre, marca: f.marca, presentacion: f.presentacion, sku: f.sku, precio: Number(f.precio), stockMinimo: Number(f.stockMinimo),
+            costo: f.costo === '' ? null : Number(f.costo), proveedor: f.proveedor.trim(), codigoBarras: f.codigoBarras.trim(), intervaloDias: farm && f.intervaloDias !== '' ? Number(f.intervaloDias) : null,
             principioActivo: farm ? f.principioActivo : '', requiereReceta: farm && f.requiereReceta, sigtrazavet: farm && f.sigtrazavet };
           if (id) { datos.id = id; datos.activo = f.activo; }
           intentar(() => Store.A.guardarProducto(datos), () => { closeModal(); toast(id ? 'Producto actualizado' : 'Producto creado'); });

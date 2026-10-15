@@ -286,13 +286,14 @@
         campo('tel', 'Teléfono', t.tel, { type: 'tel' }) + campo('email', 'Email', t.email, { type: 'email' }) +
         campo('domicilio', 'Domicilio', t.domicilio, { full: true }) +
         campo('cuit', 'CUIT (opcional, para facturación)', t.cuit, { ph: '20-12345678-9' }) +
+        '<div class="field"><label>Condición frente al IVA</label><select name="condicionIva">' + Dominio.facturacion.CONDICIONES_CLIENTE.map((c) => '<option' + ((t.condicionIva || 'Consumidor final') === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></div>' +
         '<div class="field full"><label>Notas</label><textarea name="notas" style="min-height:60px">' + esc(t.notas || '') + '</textarea></div>' +
         '</div><p class="small muted" style="margin:12px 0 0">El documento se usa en la receta veterinaria electrónica (Res. SENASA 654/2026, art. 18).</p>',
       foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="tf-ok">' + (id ? 'Guardar' : 'Crear tutor') + '</button>',
       onMount(m) {
         m.querySelector('#tf-ok').onclick = () => {
           const f = formData(m);
-          const datos = { nombre: f.nombre, apellido: f.apellido, tipoDoc: f.tipoDoc, doc: f.doc, tel: f.tel, email: f.email, domicilio: f.domicilio, cuit: f.cuit, notas: f.notas };
+          const datos = { nombre: f.nombre, apellido: f.apellido, tipoDoc: f.tipoDoc, doc: f.doc, tel: f.tel, email: f.email, domicilio: f.domicilio, cuit: f.cuit, condicionIva: f.condicionIva, notas: f.notas };
           const errores = TD().validar(Object.assign({ id }, datos), S().tutores);
           if (errores.length) return toast(errores[0], 'warn');
           let res;
@@ -328,7 +329,7 @@
       '<div class="card"><div class="card-head"><h3>Contacto</h3></div><div class="card-pad" style="padding-top:6px"><dl class="dl">' +
       dato('Teléfono', t.tel ? '<a href="tel:' + esc(t.tel.replace(/\s/g, '')) + '">' + esc(t.tel) + '</a>' : '') +
       dato('Email', t.email ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '') +
-      dato('Domicilio', esc(t.domicilio)) + dato('Documento', esc(docTexto(t))) + dato('CUIT', esc(t.cuit)) + dato('Notas', esc(t.notas)) +
+      dato('Domicilio', esc(t.domicilio)) + dato('Documento', esc(docTexto(t))) + dato('CUIT', esc(t.cuit)) + dato('Condición IVA', esc(t.condicionIva || 'Consumidor final')) + dato('Notas', esc(t.notas)) +
       '</dl></div></div>' +
       '<div class="card"><div class="card-head"><h3>Mascotas a cargo</h3></div>' +
       (mascotas.length ? mascotas.map((p) => '<div class="list-row clickable" data-pac="' + p.id + '"><div class="att-ic green">' + icon('paw') + '</div><div class="grow"><div class="t">' + esc(p.nombre) + ' <span class="sp">(' + esc(p.especie) + ' · ' + esc(p.raza) + ')</span></div><div class="s">' + Store.edad(p.nacimiento) + (p.peso ? ' · ' + p.peso + ' kg' : '') + '</div></div>' + icon('arrow') + '</div>').join('')

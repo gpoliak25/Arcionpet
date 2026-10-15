@@ -4,7 +4,7 @@
   const { S, pageHead, ui } = VC;
   const C = () => Dominio.configuracion;
   const ROLES = () => Dominio.permisos.ROLES;
-  const TABS = [['clinica', 'Datos de la clínica'], ['usuarios', 'Usuarios y roles'], ['umbrales', 'Umbrales'], ['sla', 'SLA'], ['modulos', 'Módulos y flags']];
+  const TABS = [['clinica', 'Datos de la clínica'], ['usuarios', 'Usuarios y roles'], ['umbrales', 'Umbrales'], ['sla', 'SLA'], ['facturacion', 'Facturación'], ['modulos', 'Módulos y flags']];
 
   /* Guarda una parte de la configuración, la valida y la registra en la auditoría. */
   function guardar(seccion, datos) {
@@ -49,6 +49,15 @@
         campo('derivaciones', 'Derivaciones sin respuesta (h)', s.derivaciones, { type: 'number' }) +
         campo('interconsultas', 'Interconsultas sin respuesta del soporte (h)', s.interconsultas, { type: 'number' }) + '</div>' + pie('cf-sla');
     }
+    if (tab === 'facturacion') {
+      const f = Store.facturacionCfg();
+      cuerpo = ayuda('Factura electrónica A, B o C según la condición frente al IVA de la clínica y del cliente, con notas de crédito para las devoluciones.') +
+        '<div class="callout amber" style="margin-bottom:14px">' + icon('alert') + '<span><b>Modo homologación.</b> Los comprobantes llevan un CAE simulado y la leyenda “sin validez fiscal”. Para facturar en producción hace falta elegir el proveedor (ARCA directo o un intermediario) y cargar sus credenciales: es una decisión pendiente.</span></div>' +
+        '<div class="form-grid">' + campo('proveedor', 'Proveedor de facturación electrónica', f.proveedor, { ph: 'Pendiente de definir' }) +
+        '<div class="field"><label>Punto de venta por defecto</label><select name="puntoVenta">' + f.puntosVenta.map((p) => '<option value="' + p.numero + '"' + (p.numero === f.puntoVenta ? ' selected' : '') + '>' + String(p.numero).padStart(4, '0') + ' · ' + esc(p.nombre) + '</option>').join('') + '</select></div></div>' +
+        '<div class="section-title">Puntos de venta</div><div id="cf-pvs">' + f.puntosVenta.map((p) => '<div class="form-grid" data-pv style="margin-bottom:8px"><div class="field"><label>Número</label><input type="number" min="1" max="99999" data-k="numero" value="' + p.numero + '"></div><div class="field"><label>Nombre</label><input data-k="nombre" value="' + esc(p.nombre) + '"></div></div>').join('') + '</div>' +
+        '<button class="btn sm" id="cf-pv-add">' + icon('plus') + 'Agregar punto de venta</button>' + pie('cf-fact');
+    }
     if (tab === 'modulos') {
       cuerpo = ayuda('Los módulos deshabilitados desaparecen del menú y sus pantallas dejan de estar disponibles. Sus datos se conservan.') +
         Object.entries(C().MODULOS).map(([k, l]) => '<label class="cfg-switch"><input type="checkbox" name="mod_' + k + '"' + (cfg.modulos[k] !== false ? ' checked' : '') + '><span>' + l + '</span></label>').join('') +
@@ -67,6 +76,12 @@
         const b = (sel, fn) => { const el = root.querySelector(sel); if (el) el.onclick = fn; };
         b('#cf-clinica', () => guardar('clinica', { clinica: formData(form) }));
         b('#cf-umbrales', () => { const f = formData(form); guardar('umbrales', { umbrales: { incierto: num(f.incierto), patologico: num(f.patologico), avisoFarmacia: num(f.avisoFarmacia), avisoHemo: num(f.avisoHemo) } }); });
+        b('#cf-pv-add', () => { const d = document.createElement('div'); d.innerHTML = '<div class="form-grid" data-pv style="margin-bottom:8px"><div class="field"><label>Número</label><input type="number" min="1" max="99999" data-k="numero"></div><div class="field"><label>Nombre</label><input data-k="nombre"></div></div>'; root.querySelector('#cf-pvs').appendChild(d.firstChild); });
+        b('#cf-fact', () => {
+          const f = formData(form);
+          const puntosVenta = [...form.querySelectorAll('[data-pv]')].map((row) => ({ numero: Number(row.querySelector('[data-k="numero"]').value), nombre: row.querySelector('[data-k="nombre"]').value.trim() })).filter((p) => p.numero || p.nombre);
+          if (guardar('facturacion', { facturacion: { modo: 'homologacion', proveedor: f.proveedor.trim(), puntosVenta, puntoVenta: Number(f.puntoVenta) } })) App.render();
+        });
         b('#cf-sla', () => { const f = formData(form); guardar('sla', { sla: { triage: num(f.triage), derivaciones: num(f.derivaciones), interconsultas: num(f.interconsultas) } }); });
         b('#cf-modulos', () => {
           const f = formData(form), modulos = {};

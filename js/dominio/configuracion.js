@@ -36,6 +36,15 @@
     if (cl.cuit && String(cl.cuit).replace(/\D/g, '').length !== 11) e.push('El CUIT de la clínica debe tener 11 dígitos');
     if (cl.condicionIva && !CONDICIONES_IVA.includes(cl.condicionIva)) e.push('Condición frente al IVA inválida');
     if (cl.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cl.email)) e.push('El email de la clínica no es válido');
+    const f = c.facturacion;
+    if (f) {
+      const pv = f.puntosVenta || [];
+      if (!pv.length) e.push('Configurá al menos un punto de venta');
+      if (pv.some((p) => !esEntero(p.numero, 1, 99999) || !String(p.nombre || '').trim())) e.push('Cada punto de venta necesita un número de 1 a 99999 y un nombre');
+      if (new Set(pv.map((p) => p.numero)).size !== pv.length) e.push('Hay puntos de venta con el mismo número');
+      if (!pv.some((p) => p.numero === f.puntoVenta)) e.push('El punto de venta por defecto no existe');
+      if (f.modo !== 'homologacion') e.push('Sin credenciales del proveedor de facturación electrónica solo se puede operar en homologación');
+    }
     return e;
   }
 

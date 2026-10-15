@@ -49,8 +49,9 @@ test('venta de pet shop: descuenta stock, numera y queda asociada al tutor', () 
   assert.equal(r.estado.movimientos[0].ref, r.venta.id);
 });
 
-test('toda venta exige tutor activo y medio de pago válido', () => {
-  assert.throws(() => V.registrar(base(), { medioPago: 'qr', items: [{ productoId: 'correa', cantidad: 1 }] }, ctx()), /Elegí el tutor/);
+test('consumidor final: se permite sin tutor, salvo productos bajo receta; el tutor, si se indica, debe estar activo', () => {
+  assert.doesNotThrow(() => V.registrar(base(), { medioPago: 'qr', items: [{ productoId: 'correa', cantidad: 1 }] }, ctx()));
+  assert.throws(() => V.registrar(base(), { medioPago: 'qr', items: [{ productoId: 'amox', cantidad: 1 }], receta: rve() }, ctx()), /consumidor final/);
   assert.throws(() => V.registrar(base(), { tutorId: 't2', medioPago: 'qr', items: [{ productoId: 'correa', cantidad: 1 }] }, ctx()), /dado de baja/);
   assert.throws(() => V.registrar(base(), { tutorId: 't1', medioPago: 'cheque', items: [{ productoId: 'correa', cantidad: 1 }] }, ctx()), /medio de pago/);
   assert.throws(() => V.registrar(base(), { tutorId: 't1', pacienteId: 'p9', medioPago: 'qr', items: [{ productoId: 'correa', cantidad: 1 }] }, ctx()), /no pertenece/);

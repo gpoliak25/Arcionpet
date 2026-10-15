@@ -15,8 +15,8 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | 4 · Inicio | Prioridades del día, agenda de hoy, estudios recientes, cupo de soporte |
 | 6 · Pacientes y turnos | Alta/edición, búsqueda por mascota, raza, tutor o documento, **Buscar en la red** EISPLUS, tutores · Agenda 7/14/21 días, pedidos del **Portal Cliente**, cierre de turnos pasados |
 | — · Tutores | Ficha con contacto, mascotas a cargo, historial de turnos y compras; alta con validación de DNI/CUIT/pasaporte; baja lógica |
-| — · Inventario | Pet shop (alimentos, correas y accesorios, ropa, juguetes) y farmacia (antiparasitarios, medicamentos, vacunas, insumos): stock por lotes, mínimo con alerta, vencimientos a 30 días, ingreso de mercadería, ajustes sin stock negativo y declaraciones SIGTRAZAVET pendientes (Res. SENASA 654/2026, art. 12) |
-| — · Ventas | Punto de venta con tutor obligatorio (y mascota), medios de pago QR, transferencia, efectivo, crédito y débito, descuento de stock FEFO y comprobante. Productos bajo receta solo contra una **RVE** vigente (Res. SENASA 654/2026: CUVE, datos del art. 18 d, 30 días, una sola dispensa) o entrega desde botiquín del veterinario (art. 20). Anulación con reposición de stock (solo administración) |
+| — · Inventario | Pet shop (alimentos, correas y accesorios, ropa, juguetes) y farmacia (antiparasitarios, medicamentos, vacunas, insumos): stock por lotes, mínimo con alerta, vencimientos a 30 días, ingreso de mercadería, ajustes sin stock negativo y declaraciones SIGTRAZAVET pendientes (Res. SENASA 654/2026, art. 12) con declaración jurada. Costo, proveedor y margen; código de barras EAN-13; sugerencia de reposición; historial de movimientos; botiquín de autoconsumo del veterinario (art. 20) con registro en la ficha clínica |
+| — · Ventas | Punto de venta con lector de código de barras, tutor o consumidor final (los productos bajo receta exigen tutor y mascota), medios de pago QR, transferencia, efectivo, crédito y débito, descuento de stock FEFO y comprobante. Productos bajo receta solo contra una **RVE** vigente (Res. SENASA 654/2026: CUVE, datos del art. 18 d, 30 días, una sola dispensa) o entrega desde botiquín del veterinario (art. 20). Caja con apertura, ingresos y retiros y cierre con arqueo. Factura electrónica A, B o C con CAE y punto de venta (en **homologación**: sin validez fiscal). Devoluciones parciales o totales con nota de crédito, reintegro en caja y reposición al lote (solo administración). Las vacunas y antiparasitarios vendidos o aplicados agendan la próxima dosis |
 | 7 · Imágenes | Carga de radiografía (subida o del conjunto de test del TP) → la **CNN** la clasifica Normal / Incierto / Patológico con su probabilidad, y muestra el Grad-CAM |
 | 8 · Triage | Urgente / A revisar, estado del informe y días de espera |
 | 9 · Informes | Borrador generado por IA, editable, que solo pasa a firmado cuando el veterinario lo revisa y lo firma |
@@ -75,7 +75,11 @@ Tocá el usuario abajo a la izquierda para cambiar de rol: **Veterinario/a**, **
 
 ## Receta veterinaria electrónica (Res. SENASA 654/2026)
 
-ArcionPet **no se conecta** con SIGTRAZAVET (no hay una API pública documentada). La RVE se emite en SIGTRAZAVET o SIGTrámites y en ArcionPet se **registra** con su CUVE para validar la venta. Las operaciones que hay que declarar (ventas con RVE en tiempo real, contingencias a 10 días, anulaciones a 20 días) quedan como pendientes en Inventario hasta cargar el número de operación.
+El veterinario **emite** la RVE desde ArcionPet (firma con su matrícula). La conexión con SIGTRAZAVET depende de la especificación técnica de la DNSA, así que pasa por un adapter: con DEMO_MODE asigna un número simulado (`SIM-…`, sin validez); sin DEMO_MODE la receta queda **pendiente de integración** y no habilita la venta hasta cargar el CUVE que devuelva el sistema oficial. También se pueden **registrar** RVE emitidas en SIGTRAZAVET o SIGTrámites copiando su CUVE. Las operaciones que hay que declarar (ventas con RVE en tiempo real, contingencias a 10 días, anulaciones a 20 días) quedan como pendientes en Inventario hasta cargar el número de operación.
+
+## Facturación electrónica
+
+El tipo de comprobante sale de la condición frente al IVA de la clínica y del cliente (responsable inscripto: A a responsables inscriptos, B al resto; monotributo o exento: C). Hasta definir el proveedor (ARCA directo o un intermediario) y cargar sus credenciales, la emisión usa un **adapter de homologación**: CAE simulado y la leyenda "HOMOLOGACIÓN · sin validez fiscal" en cada comprobante. Los puntos de venta se configuran en Configuración → Facturación.
 
 ## Datos y migraciones
 
@@ -90,7 +94,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación y declaraciones SIGTRAZAVET).
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo) y emisión de RVE.
 
 ## Estructura
 
