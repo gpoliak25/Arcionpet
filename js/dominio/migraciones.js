@@ -334,6 +334,11 @@
         return s;
       },
     },
+    {
+      de: 18, a: 19, descripcion: 'ARCION Pet: historial de conversaciones por usuario',
+      up(s) { s.arcionConversaciones = []; return s; },
+      down(s) { delete s.arcionConversaciones; return s; },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;

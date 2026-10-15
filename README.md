@@ -25,7 +25,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | 11 · Control de calidad | Concordancia IA–vet con intervalo de confianza y **aviso de muestra chica** (n < 30), matriz de confusión, falsos negativos y positivos para revisar, catálogo de **hallazgos codificados** (se eligen al firmar, junto con la clase real), exportación **anonimizada** en CSV/JSON (sin nombres ni texto libre, fechas por mes, seudónimos) |
 | 12 · Analítica | Filtro por período y pestañas de Diagnóstico (con la misma concordancia que Control de calidad), Turnos (clínica y peluquería: estados, ausentismo, servicios, portal), Ventas (facturación neta, medios, rubros, más vendidos) y Hemocomponentes (transfusiones, vencidas, descarte, disponibles) |
 | — · Modelo CNN | Los 3 modelos del TP evaluados en vivo sobre el test (AUC, ROC, matrices de confusión, aciertos y errores por imagen) y reentrenamiento de la capa final con radiografías de la clínica |
-| 13 · ARCION | Asistente (botón flotante y página propia): dudas de uso y consultas de pacientes, turnos y stock |
+| 13 · ARCION Pet | Asistente (botón flotante y página propia): dudas de uso y consultas de pacientes, turnos, stock, recetas (RVE) y declaraciones SIGTRAZAVET. Solo muestra lo que el rol puede ver; los registros citados (paciente, turno, producto, estudio, unidad) son enlaces; historial de conversaciones por usuario; sugerencias según el rol |
 | 14 · Hemocomponentes | Vista unificada de la red, disponibilidad por tipo y grupo, alertas de vencimiento, trazabilidad de cada unidad del donante al paciente |
 
 ## Guion sugerido (≈ 8 minutos)
@@ -38,7 +38,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 6. **Interconsultas → Nueva interconsulta**: baja el cupo, y a los pocos segundos responde el soporte.
 7. **Turnos → Portal Cliente**: el tutor elige servicio y horario, cancela o reprograma; el pedido llega a la clínica, que lo confirma.
 8. **Hemocomponentes**: ver las alertas de vencimiento, abrir una unidad (trazabilidad) y **reservarla** para un paciente.
-9. **ARCION**: "¿Qué turnos tengo hoy?", "Datos de Rocky", "Stock de plasma felino", "¿Cómo firmo un informe?".
+9. **ARCION Pet**: "¿Qué turnos tengo hoy?", "Datos de Rocky", "Stock de plasma felino", "¿Cómo firmo un informe?".
 10. **Modelo CNN**: comparar los tres modelos del TP evaluados en vivo y ver los errores imagen por imagen.
 11. **Analítica**: los indicadores reflejan lo que se hizo durante la demo.
 
@@ -48,7 +48,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 - Umbrales sobre P(patológica): Normal < 20 % · Incierto 20–29 % · Patológico ≥ 30 %. El 30 % es el punto de operación que eligió el TP (recall 0,80).
 - Los estudios de ejemplo usan radiografías del **conjunto de test** del TP (que los modelos no vieron), y muestran la etiqueta real para comparar. Hay aciertos, casos dudosos y un falso negativo (la cardiopatía de Rocky).
 - Las respuestas de especialistas, del soporte y los pedidos del portal siguen simulados con botones.
-- ARCION responde con datos reales de la demo, usando reconocimiento de intenciones local.
+- ARCION Pet responde con datos reales de la demo, usando reconocimiento de intenciones local.
 - Las fechas de los datos de ejemplo se calculan a partir del día de hoy, así la demo siempre se ve vigente.
 
 ## Modo demo (DEMO_MODE)
@@ -111,6 +111,6 @@ js/model/         modelos del TP convertidos a TensorFlow.js + conjunto de test 
 js/vendor/        TensorFlow.js 4.22
 js/ui.js          íconos, modales, avisos y visor de radiografías
 js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, inventario, ventas, servicios, red)
-js/arcion.js      asistente ARCION
+js/arcion.js      asistente ARCION Pet
 js/app.js         navegación y notificaciones
 ```

@@ -508,6 +508,13 @@ button.nav-group .chev { width: 14px; height: 14px; transition: transform .15s; 
 .cfg-switch { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line-2); cursor: pointer; }
 .cfg-switch input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--green); }
 select.asig { border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; background: #fff; font-size: 13px; max-width: 190px; }
+/* ARCION Pet: historial de conversaciones y registros citados */
+.conv-list { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; }
+.conv-list .conv { text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 2px; }
+.conv-list .conv.on, .conv-list .conv:hover { border-color: var(--green); }
+.conv-list .conv .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-list .conv .s { font-size: 12px; color: var(--muted); }
+.amsg a.ref { color: inherit; font-weight: 600; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 /* Matriz de confusión */
 table.mini { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 table.mini th, table.mini td { padding: 9px 10px; border: 1px solid var(--line); text-align: center; font-size: 14px; }

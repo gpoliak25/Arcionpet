@@ -208,7 +208,12 @@
   if (demoParam === '1' || demoParam === '0') Store.A.setDemo(demoParam === '1');
   document.getElementById('reset-demo').hidden = !Store.demo;
 
-  window.App = { render };
+  /* ¿El rol activo puede abrir esta ruta? (permiso del módulo y módulo habilitado) */
+  function puedeRuta(h) {
+    const name = String(h || '').replace(/^#\//, '').split('/')[0];
+    return !!ROUTES[name] && Store.puede(MODULO[name]) && Store.moduloHabilitado(MODULO_OPCIONAL[name]);
+  }
+  window.App = { render, puedeRuta };
   if (!location.hash) location.hash = '#/inicio'; else render();
 
   /* Al iniciar, la CNN analiza los estudios que todavía no tienen resultado. */
