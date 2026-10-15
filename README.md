@@ -26,7 +26,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | 12 · Analítica | Filtro por período y pestañas de Diagnóstico (con la misma concordancia que Control de calidad), Turnos (clínica y peluquería: estados, ausentismo, servicios, portal), Ventas (facturación neta, medios, rubros, más vendidos) y Hemocomponentes (transfusiones, vencidas, descarte, disponibles) |
 | — · Modelo CNN | Los 3 modelos del TP evaluados en vivo sobre el test (AUC, ROC, matrices de confusión, aciertos y errores por imagen) y reentrenamiento de la capa final con radiografías de la clínica |
 | 13 · ARCION Pet | Asistente (botón flotante y página propia): dudas de uso y consultas de pacientes, turnos, stock, recetas (RVE) y declaraciones SIGTRAZAVET. Solo muestra lo que el rol puede ver; los registros citados (paciente, turno, producto, estudio, unidad) son enlaces; historial de conversaciones por usuario; sugerencias según el rol |
-| 14 · Hemocomponentes | Vista unificada de la red, disponibilidad por tipo y grupo, alertas de vencimiento, trazabilidad de cada unidad del donante al paciente |
+| 14 · Hemocomponentes | Vista unificada de la red, disponibilidad por tipo y grupo, alertas de vencimiento y de **reservas por vencer**, trazabilidad de cada unidad del donante al paciente. **Compatibilidad donante–receptor** (grupos felinos A/B/AB, DEA 1.1 en perros, sensibilización y transfusiones previas): sin compatibilidad hace falta justificar. **Registro de transfusiones** por paciente (volumen, prueba cruzada, premedicación, reacciones) en la ficha clínica. **Solicitudes a la red** con las unidades de otras sedes que las cubren y traslado |
 
 ## Guion sugerido (≈ 8 minutos)
 
@@ -37,7 +37,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 5. **Triage**: ordenado por prioridad; abrir un estudio *Incierto* y **Derivar a especialista**. En **Derivaciones**, tocar *Simular respuesta*.
 6. **Interconsultas → Nueva interconsulta**: baja el cupo, y a los pocos segundos responde el soporte.
 7. **Turnos → Portal Cliente**: el tutor elige servicio y horario, cancela o reprograma; el pedido llega a la clínica, que lo confirma.
-8. **Hemocomponentes**: ver las alertas de vencimiento, abrir una unidad (trazabilidad) y **reservarla** para un paciente.
+8. **Hemocomponentes**: ver las alertas de vencimiento, abrir una unidad (trazabilidad) y **reservarla** para un paciente (con el control de compatibilidad); pedir unidades a la red.
 9. **ARCION Pet**: "¿Qué turnos tengo hoy?", "Datos de Rocky", "Stock de plasma felino", "¿Cómo firmo un informe?".
 10. **Modelo CNN**: comparar los tres modelos del TP evaluados en vivo y ver los errores imagen por imagen.
 11. **Analítica**: los indicadores reflejan lo que se hizo durante la demo.
@@ -95,7 +95,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo), emisión de RVE y turnos (conflictos por recurso, horario, transiciones, reprogramación, horarios libres, vínculo con estudios y cobro de servicios) peluquería (tamaño, cotización, servicios, fichas), control de calidad (concordancia, FN/FP, anonimización) y analítica por período.
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación, devoluciones y declaraciones SIGTRAZAVET), facturación (tipos A/B/C, numeración, notas de crédito), caja (arqueo), emisión de RVE y turnos (conflictos por recurso, horario, transiciones, reprogramación, horarios libres, vínculo con estudios y cobro de servicios) peluquería (tamaño, cotización, servicios, fichas), control de calidad (concordancia, FN/FP, anonimización) analítica por período y banco de sangre (compatibilidad, transfusiones, solicitudes).
 
 ## Estructura
 

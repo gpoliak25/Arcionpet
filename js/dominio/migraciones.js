@@ -339,6 +339,26 @@
       up(s) { s.arcionConversaciones = []; return s; },
       down(s) { delete s.arcionConversaciones; return s; },
     },
+    {
+      de: 19, a: 20, descripcion: 'Banco de sangre: grupo sanguíneo de los pacientes, registro de transfusiones y solicitudes a la red',
+      up(s) {
+        const GRUPO = { p2: 'Tipo A', p4: 'DEA 1.1 −' };
+        s.pacientes = s.pacientes.map((p) => Object.assign({ grupoSanguineo: GRUPO[p.id] || null }, p));
+        // las transfusiones ya registradas como evento pasan a tener su ficha
+        s.hemoTransfusiones = [];
+        (s.hemo || []).filter((u) => u.estado === 'transfundida' && u.pacienteId).forEach((u, i) => {
+          const ev = (u.eventos || []).find((e) => e.tipo === 'transfusion') || {};
+          s.hemoTransfusiones.push({ id: 'tx' + (i + 1), unidadId: u.id, pacienteId: u.pacienteId, fecha: ev.fecha || u.vence, comp: u.comp, especie: u.especie, grupoUnidad: u.grupo, volumen: u.volumen, pruebaCruzada: 'compatible', compatibilidad: 'ok', reaccion: 'ninguna', reaccionDetalle: '', premedicacion: '', veterinario: '', nota: ev.texto || '', origen: 'historico' });
+        });
+        s.hemoSolicitudes = [];
+        return s;
+      },
+      down(s) {
+        s.pacientes = s.pacientes.map((p) => { const c = Object.assign({}, p); delete c.grupoSanguineo; return c; });
+        delete s.hemoTransfusiones; delete s.hemoSolicitudes;
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;
