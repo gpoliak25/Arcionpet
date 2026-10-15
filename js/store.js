@@ -1,21 +1,39 @@
-/* Estado de la demo: persistido en localStorage, con IA simulada y métricas derivadas. */
+/* Estado de la demo: persistido en localStorage, con migraciones de esquema y métricas derivadas. */
 (function () {
   const KEY = 'arcionpet-demo';
   let S;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  const M = Dominio.migraciones;
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
+  let soloLectura = false; // datos de una versión más nueva: no se sobrescriben
+
+  /* Carga el estado guardado y lo migra a la versión actual.
+     Antes de migrar se guarda una copia intacta en arcionpet-demo:backup:v<versión>. */
   function load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.version === SEED.version) return parsed;
+    const raw = lsGet(KEY);
+    if (raw) {
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch (e) { lsSet(KEY + ':backup:ilegible', raw); }
+      if (parsed && parsed.version === M.VERSION_ACTUAL) return parsed;
+      if (parsed && parsed.version > M.VERSION_ACTUAL) {
+        soloLectura = true;
+        console.warn('Datos de una versión más nueva (' + parsed.version + '): se abren sin guardar cambios.');
+        return M.revertir(parsed, M.VERSION_ACTUAL);
       }
-    } catch (e) { /* sin storage: usamos la semilla */ }
-    return clone(SEED);
+      if (parsed && parsed.version >= M.VERSION_BASE) {
+        lsSet(KEY + ':backup:v' + parsed.version, raw);
+        try { return M.migrar(parsed); } catch (e) {
+          soloLectura = true; // no pisamos los datos originales si la migración falla
+          console.error('Falló la migración; los datos originales quedan en el backup.', e);
+        }
+      }
+    }
+    return M.migrar(clone(SEED));
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignorado */ }
+    if (!soloLectura) lsSet(KEY, JSON.stringify(S));
     listeners.forEach((fn) => fn());
   }
   const listeners = [];
@@ -142,7 +160,12 @@
 
   /* ---------- Mutaciones ---------- */
   const A = {
-    reset() { S = clone(SEED); save(); },
+    reset() { S = M.migrar(clone(SEED)); soloLectura = false; save(); },
+    /* Revierte el esquema a una versión anterior (para deshacer una migración). Se usa desde la consola. */
+    revertirA(version) { const backup = JSON.stringify(S); lsSet(KEY + ':backup:v' + S.version, backup); S = M.revertir(S, version); soloLectura = true; lsSet(KEY, JSON.stringify(S)); return S.version; },
+    /* Restaura una copia guardada antes de una migración. */
+    restaurarBackup(clave) { const raw = lsGet(KEY + ':backup:' + clave); if (!raw) return false; lsSet(KEY, raw); return true; },
+    cambiarUsuario(id) { if (S.usuarios.some((u) => u.id === id)) { S.usuarioActivo = id; save(); } },
     addPaciente(p, t) {
       if (t) { t.id = uid('t'); S.tutores.push(t); p.tutorId = t.id; }
       p.id = uid('p'); S.pacientes.push(p); save(); return p;
@@ -232,8 +255,13 @@
     },
   };
 
+  const usuario = () => S.usuarios.find((u) => u.id === S.usuarioActivo) || S.usuarios[0];
+  const rol = () => usuario().rol;
+  const puede = (modulo, nivel) => Dominio.permisos.puede(rol(), modulo, nivel);
+  const puedeAccion = (accion) => Dominio.permisos.puedeAccion(rol(), accion);
+
   window.Store = {
-    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid,
+    get s() { return S; }, save, on: (fn) => listeners.push(fn), uid, usuario, rol, puede, puedeAccion,
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
     triage, notificaciones, qaStats, hemoAlertas, RES_LABEL, A,
   };

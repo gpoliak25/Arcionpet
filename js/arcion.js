@@ -8,6 +8,7 @@
   const link = (href, label) => '<a class="btn sm go" href="' + href + '">' + label + ' →</a>';
   const list = (items) => '<ul>' + items.map((i) => '<li>' + i + '</li>').join('') + '</ul>';
 
+  const NOMBRE_MODULO = { hemocomponentes: 'hemocomponentes', turnos: 'turnos', informes: 'informes', triage: 'triage', derivaciones: 'derivaciones', interconsultas: 'interconsultas', calidad: 'control de calidad', pacientes: 'pacientes', tutores: 'tutores' };
   const history = [];
   const mounts = new Set();
 
@@ -42,6 +43,8 @@
   function responder(q) {
     const t = norm(q);
     if (!t.trim()) return 'Escribí tu consulta 🙂';
+    // cada consulta de datos respeta los permisos del rol activo
+    const sinPermiso = (m) => 'Con tu rol (' + esc(Dominio.permisos.ROLES[Store.rol()]) + ') no tenés acceso a la información de <b>' + esc(NOMBRE_MODULO[m] || m) + '</b>.';
 
     // Saludo / ayuda
     if (/^(hola|buen(as|os)|hey|que tal)/.test(t.trim()) && t.trim().split(/\s+/).length <= 3)
@@ -50,7 +53,7 @@
       return 'Puedo ayudarte con:' + list(['<b>Dudas de uso</b>: cómo firmar un informe, derivar, cargar un estudio, dar un turno…', '<b>Pacientes</b>: “datos de Luna”, “mascotas de Pérez”', '<b>Agenda</b>: “turnos de hoy”, “turnos de mañana”, “turnos de la semana”', '<b>Diagnóstico</b>: “informes sin firmar”, “estudios urgentes”, “derivaciones pendientes”', '<b>Stock</b>: “stock de plasma”, “qué vence esta semana”', '<b>Indicadores</b>: “concordancia de la IA”, “cupo de interconsultas”']);
 
     // Hemocomponentes
-    if (has(t, 'hemo', 'stock', 'sangre', 'plasma', 'globulos', 'plaqueta', 'unidad', 'dea', 'vence', 'vencim')) {
+    if (has(t, 'hemo', 'stock', 'sangre', 'plasma', 'globulos', 'plaqueta', 'unidad', 'dea', 'vence', 'vencim')) { if (!Store.puede('hemocomponentes')) return sinPermiso('hemocomponentes');
       const activas = S().hemo.filter((u) => ['disponible', 'reservada'].includes(u.estado) && Store.daysBetween(new Date(), u.vence) >= 0);
       if (has(t, 'vence', 'vencim', 'por vencer')) {
         const al = Store.hemoAlertas();
@@ -76,7 +79,7 @@
     }
 
     // Turnos
-    if (has(t, 'turno', 'agenda', 'citas')) {
+    if (has(t, 'turno', 'agenda', 'citas')) { if (!Store.puede('turnos')) return sinPermiso('turnos');
       if (has(t, 'pedido', 'portal', 'confirmar')) {
         const p = S().turnos.filter((x) => x.estado === 'pendiente');
         return p.length ? 'Hay ' + p.length + ' pedido' + (p.length > 1 ? 's' : '') + ' del Portal Cliente para confirmar:' + list(p.map(turnoLi)) + link('#/turnos', 'Ir a Turnos') : 'No hay pedidos del portal pendientes.';
@@ -86,36 +89,36 @@
       else if (has(t, 'semana', 'proxim')) { r = turnosEntre(0, 7); lbl = 'los próximos 7 días'; }
       else { r = turnosEntre(0, 1); lbl = 'hoy'; }
       const pac = pacienteEn(t);
-      if (pac) { r = S().turnos.filter((x) => x.pacienteId === pac.id && new Date(x.fecha) >= new Date() && ['confirmado', 'pendiente'].includes(x.estado)); lbl = 'próximos de ' + esc(pac.nombre); }
+      if (pac) { if (!Store.puede('pacientes')) return sinPermiso('pacientes'); r = S().turnos.filter((x) => x.pacienteId === pac.id && new Date(x.fecha) >= new Date() && ['confirmado', 'pendiente'].includes(x.estado)); lbl = 'próximos de ' + esc(pac.nombre); }
       return r.length ? 'Turnos ' + lbl + ' (' + r.length + '):' + list(r.map(turnoLi)) + link('#/turnos', 'Ver agenda') : 'No hay turnos ' + lbl + '.' + link('#/turnos', 'Ver agenda');
     }
 
     // Informes pendientes
-    if (has(t, 'informe') && has(t, 'firmar', 'pendiente', 'falta', 'borrador', 'sin firmar')) {
+    if (has(t, 'informe') && has(t, 'firmar', 'pendiente', 'falta', 'borrador', 'sin firmar')) { if (!Store.puede('informes')) return sinPermiso('informes');
       const b = S().informes.filter((i) => i.estado === 'borrador');
       return b.length ? 'Tenés <b>' + b.length + '</b> informe' + (b.length > 1 ? 's' : '') + ' en borrador para revisar y firmar:' + list(b.map((i) => { const e = Store.estudio(i.estudioId), p = Store.paciente(e.pacienteId); return '<a href="#/informes/' + i.id + '">' + esc(p.nombre) + ' · ' + esc(e.tipo) + '</a> — confianza ' + UI.NIVEL[i.nivel].toLowerCase(); })) : 'No tenés informes pendientes de firma. ✅';
     }
 
     // Urgentes / triage
-    if (has(t, 'urgente', 'triage', 'priorid', 'atender primero', 'patologic')) {
+    if (has(t, 'urgente', 'triage', 'priorid', 'atender primero', 'patologic')) { if (!Store.puede('triage')) return sinPermiso('triage');
       const tr = Store.triage().filter((r) => r.prioridad === 'urgente');
       return tr.length ? 'Hay <b>' + tr.length + '</b> estudio' + (tr.length > 1 ? 's' : '') + ' urgentes. Los primeros:' + list(tr.slice(0, 5).map((r) => { const p = Store.paciente(r.e.pacienteId); return '<a href="#/estudios/' + r.e.id + '">' + esc(p.nombre) + ' · ' + esc(r.e.tipo) + '</a> — ' + Store.RES_LABEL[r.e.resultado] + ' ' + r.e.confianza + '% · ' + (r.espera === 0 ? 'hoy' : r.espera + ' d de espera'); })) + link('#/triage', 'Ir a Triage') : 'No hay estudios urgentes. ✅';
     }
 
     // Derivaciones
-    if (has(t, 'derivac', 'derivad')) {
+    if (has(t, 'derivac', 'derivad')) { if (!Store.puede('derivaciones')) return sinPermiso('derivaciones');
       const d = S().derivaciones.filter((x) => x.estado === 'pendiente');
       return (d.length ? '<b>' + d.length + '</b> derivación' + (d.length > 1 ? 'es' : '') + ' esperando respuesta:' + list(d.map((x) => { const e = Store.estudio(x.estudioId), p = Store.paciente(e.pacienteId); return esc(p.nombre) + ' · ' + esc(e.tipo) + ' — desde ' + fDate(x.fecha); })) : 'No hay derivaciones pendientes.') + link('#/derivaciones', 'Ver derivaciones');
     }
 
     // Interconsultas / cupo
-    if (has(t, 'interconsult', 'cupo', 'pack', 'soporte')) {
+    if (has(t, 'interconsult', 'cupo', 'pack', 'soporte')) { if (!Store.puede('interconsultas')) return sinPermiso('interconsultas');
       const pk = S().pack, act = S().interconsultas.filter((i) => i.estado !== 'cerrada');
       return 'Usaste <b>' + pk.usadas + ' de ' + pk.total + '</b> interconsultas del ' + esc(pk.nombre) + ' este mes (quedan ' + (pk.total - pk.usadas) + '). Activas: ' + act.length + '.' + (act.length ? list(act.map((i) => '<a href="#/interconsultas/' + i.id + '">' + esc(i.asunto) + '</a>')) : '') + link('#/interconsultas', 'Ir a Interconsultas');
     }
 
     // Calidad
-    if (has(t, 'concordancia', 'calidad', 'precision', 'acierta', 'discrepan')) {
+    if (has(t, 'concordancia', 'calidad', 'precision', 'acierta', 'discrepan')) { if (!Store.puede('calidad')) return sinPermiso('calidad');
       const st = Store.qaStats();
       return 'La concordancia IA–veterinario es de <b>' + st.pct + '%</b> sobre ' + st.total + ' estudios evaluados, con ' + st.discrepancias + ' discrepancia' + (st.discrepancias === 1 ? '' : 's') + '.' + link('#/calidad', 'Ver control de calidad');
     }
@@ -135,11 +138,11 @@
     }
 
     // Mascotas de un tutor
-    if (has(t, 'tutor', 'dueno', 'mascotas de', 'pacientes de')) {
+    if (has(t, 'tutor', 'dueno', 'mascotas de', 'pacientes de')) { if (!Store.puede('tutores')) return sinPermiso('tutores');
       const tu = tutorEn(t);
       if (tu) { const ps = S().pacientes.filter((p) => p.tutorId === tu.id); return '<b>' + esc(tu.nombre + ' ' + tu.apellido) + '</b> (DNI ' + esc(tu.doc) + ', ' + esc(tu.tel) + ') tiene ' + ps.length + ' mascota' + (ps.length === 1 ? '' : 's') + ':' + list(ps.map((p) => esc(p.nombre) + ' · ' + esc(p.especie) + ' ' + esc(p.raza))); }
     }
-    if (has(t, 'cuantos pacientes', 'pacientes tengo', 'cantidad de pacientes')) {
+    if (has(t, 'cuantos pacientes', 'pacientes tengo', 'cantidad de pacientes')) { if (!Store.puede('pacientes')) return sinPermiso('pacientes');
       const ps = S().pacientes; return 'La clínica tiene <b>' + ps.length + '</b> pacientes (' + ps.filter((p) => p.origen === 'red').length + ' incorporados desde la red EISPLUS).' + link('#/pacientes', 'Ver pacientes');
     }
 
