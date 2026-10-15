@@ -135,6 +135,11 @@
   }
 
   const H = () => Dominio.hemo;
+  const AL = () => Dominio.aliados;
+  const aliado = (id) => (S.aliados || []).find((x) => x.id === id) || null;
+  const recAliado = (id) => (S.aliadoRecomendaciones || []).find((x) => x.id === id);
+  /* Directorio visible: los de la clínica y, si el flag está prendido, los verificados de la red. */
+  const aliadosVisibles = () => (S.aliados || []).filter((a) => a.origen !== 'red' || (S.config.compartirAliadosRed && a.estado === 'verificado'));
   const reservasPorVencer = () => Dominio.hemo.reservasPorVencer(S.hemo, ((S.config || {}).umbrales || {}).avisoHemo || 7, new Date());
   function hemoAlertas() {
     const dias = ((S.config || {}).umbrales || {}).avisoHemo || 7;
@@ -383,6 +388,61 @@
       let t = TU().reprogramar(S.turnos[i], fecha, ctxTurnos(), (opciones && opciones.portal) ? 'tutor' : S.usuarioActivo);
       if (opciones && opciones.portal) t = Object.assign(t, { estado: 'pendiente', origen: 'portal' });
       S.turnos[i] = t; save(); return t;
+    },
+    /* ---------- Aliados ---------- */
+    guardarAliado(datos) {
+      const e = AL().validar(datos);
+      if (e.length) throw new (AL().ErrorAliado)(e[0]);
+      if (datos.id) {
+        const a = aliado(datos.id);
+        if (a.origen === 'red') throw new (AL().ErrorAliado)('Los aliados de la red se editan en su sede');
+        Object.assign(a, datos); save(); return a;
+      }
+      const a = Object.assign({ estado: 'pendiente', origen: 'clinica', fotos: [], documentos: {}, condiciones: [] }, datos, { id: uid('al'), creado: new Date().toISOString(), creadoPor: S.usuarioActivo });
+      S.aliados = (S.aliados || []).concat([a]); save(); return a;
+    },
+    verificarAliado(id) {
+      if (!Dominio.permisos.puedeAccion(rol(), 'verificarAliado')) throw new (AL().ErrorAliado)('Solo administración verifica aliados');
+      const i = S.aliados.findIndex((x) => x.id === id);
+      S.aliados[i] = AL().verificar(S.aliados[i], new Date().toISOString(), S.usuarioActivo);
+      delete S.aliados[i].suspension; save(); return S.aliados[i];
+    },
+    suspenderAliado(id, motivo) {
+      if (!Dominio.permisos.puedeAccion(rol(), 'verificarAliado')) throw new (AL().ErrorAliado)('Solo administración suspende aliados');
+      if (!String(motivo || '').trim()) throw new (AL().ErrorAliado)('Indicá el motivo de la suspensión');
+      Object.assign(aliado(id), { estado: 'suspendido', suspension: { fecha: new Date().toISOString(), por: S.usuarioActivo, motivo: motivo.trim() } }); save();
+    },
+    /* Recomendación al tutor: solo aliados verificados; el mensaje aclara que es un tercero e informa el acuerdo comercial. */
+    recomendarAliado({ pacienteId, aliadoId, motivo, canal }) {
+      const a = aliado(aliadoId), p = paciente(pacienteId), t = tutor(p.tutorId);
+      if (!a || a.estado !== 'verificado') throw new (AL().ErrorAliado)('Solo se recomiendan aliados verificados');
+      if (!AL().CANALES[canal]) throw new (AL().ErrorAliado)('Elegí cómo enviarlo');
+      if (canal === 'email' && !t.email) throw new (AL().ErrorAliado)('El tutor no tiene email cargado');
+      if (canal === 'whatsapp' && !t.tel) throw new (AL().ErrorAliado)('El tutor no tiene teléfono cargado');
+      const texto = AL().mensaje({ aliado: a, paciente: p, tutor: t, motivo, clinica: Store.clinica });
+      const r = { id: uid('ar'), fecha: new Date().toISOString(), pacienteId, tutorId: t.id, aliadoId, motivo: motivo || '', canal, texto, por: S.usuarioActivo, concretada: false, valoracion: null, consentimiento: null, compartidos: [] };
+      S.aliadoRecomendaciones = (S.aliadoRecomendaciones || []).concat([r]);
+      S.fichaClinica = (S.fichaClinica || []).concat([{ id: uid('fc'), tipo: 'recomendacion_aliado', fecha: r.fecha, recomendacionId: r.id, animal: { pacienteId, nombre: p.nombre, especie: p.especie }, detalle: 'Recomendado: ' + a.nombre + ' (' + AL().TIPOS[a.tipo] + ')' }]);
+      save(); return r;
+    },
+    concretarRecomendacion(id) { Object.assign(recAliado(id), { concretada: true, fechaConcretada: new Date().toISOString() }); save(); },
+    valorarRecomendacion(id, puntaje, comentario) {
+      const r = recAliado(id);
+      if (!r.concretada) throw new (AL().ErrorAliado)('Solo se valora un servicio que el tutor usó');
+      const e = AL().validarValoracion(puntaje, comentario);
+      if (e.length) throw new (AL().ErrorAliado)(e[0]);
+      r.valoracion = { puntaje, comentario: comentario || '', fecha: new Date().toISOString() }; save(); return r;
+    },
+    /* Consentimiento expreso del tutor para compartir datos con el aliado (queda registrado). */
+    registrarConsentimiento(id, { medio, alcance }) {
+      if (!['verbal', 'escrito', 'portal'].includes(medio)) throw new (AL().ErrorAliado)('Indicá cómo dio el consentimiento');
+      if (!String(alcance || '').trim()) throw new (AL().ErrorAliado)('Indicá qué datos autorizó a compartir');
+      recAliado(id).consentimiento = { otorgado: true, fecha: new Date().toISOString(), medio, alcance: alcance.trim(), registradoPor: S.usuarioActivo }; save();
+    },
+    compartirConAliado(id) {
+      const r = recAliado(id);
+      if (!r.consentimiento || !r.consentimiento.otorgado) throw new (AL().ErrorAliado)('Sin el consentimiento expreso del tutor no se comparten datos con el aliado');
+      r.compartidos = (r.compartidos || []).concat([{ fecha: new Date().toISOString(), por: S.usuarioActivo, datos: r.consentimiento.alcance }]); save(); return r;
     },
     /* ARCION Pet: guarda la conversación del usuario (se conservan sus 50 más recientes). */
     guardarConversacion(c) {
@@ -638,6 +698,6 @@
     veterinarios: () => S.usuarios.filter((u) => u.rol === 'veterinario' && u.activo !== false), nombreUsuario: (id) => (S.usuarios.find((u) => u.id === id) || {}).nombre || '', producto, catalogosVisibles, inventarioAlertas,
     puedeAjustarStock: (catalogo) => Dominio.permisos.puedeAjustarStock(rol(), catalogo),
     paciente, tutor, estudio, informeDeEstudio, edad, daysBetween, isToday, nivelConfianza, borradorInforme,
-    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, reservasPorVencer, RES_LABEL, A,
+    triage, notificaciones, qaStats, filasCalidad, hemoAlertas, reservasPorVencer, aliado, aliadosVisibles, RES_LABEL, A,
   };
 })();

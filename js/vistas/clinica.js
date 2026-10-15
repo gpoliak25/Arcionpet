@@ -114,11 +114,13 @@
         (P('turnos') ? '<div class="section-title">Turnos (' + tur.length + ')</div>' : '') +
         (!P('turnos') ? '' : tur.length ? tur.map((x) => '<div class="small" style="padding:4px 0">' + fShort(x.fecha) + ' · ' + esc(x.tipo) + ' · ' + turnoEstadoBadge(x) + '</div>').join('') : '<p class="muted">Sin turnos.</p>') +
         (P('hemocomponentes') && hemo.length ? '<div class="section-title">Unidades reservadas</div>' + hemo.map((u) => '<div class="small">' + esc(u.id) + ' · ' + esc(u.comp) + ' · ' + esc(u.grupo) + ' · ' + hemoEstadoBadge(u) + ' · vence ' + fDate(u.vence) + '</div>').join('') : '') +
+        (P('aliados') && Store.moduloHabilitado('aliados') ? '<div class="section-title">Aliados recomendados</div>' + (((S().aliadoRecomendaciones || []).filter((r) => r.pacienteId === id).map((r) => { const a = Store.aliado(r.aliadoId) || {}; return '<div class="small" style="padding:3px 0">' + fDate(r.fecha) + ' · ' + esc(a.nombre || '') + ' · ' + (r.valoracion ? 'valorado ' + r.valoracion.puntaje + '/5' : r.concretada ? 'lo usó' : 'enviada') + '</div>'; }).join('')) || '<p class="small muted">Sin recomendaciones.</p>') : '') +
         (P('hemocomponentes') && tx.length ? '<div class="section-title">Transfusiones (' + tx.length + ')</div>' + tx.map((x) => '<div class="small" style="padding:3px 0">' + fDate(x.fecha) + ' · ' + esc(x.comp + ' ' + x.grupoUnidad) + ' · ' + x.volumen + ' ml · ' + esc(Dominio.hemo.REACCIONES[x.reaccion] || '') + (x.veterinario ? ' · ' + esc(x.veterinario) : '') + '</div>').join('') : ''),
-      foot: (P('turnos') ? '<button class="btn" id="pd-turno">' + icon('calendar') + 'Nuevo turno</button>' : '') + (Store.puede('imagenes', 'editar') ? '<button class="btn primary" id="pd-est">' + icon('scan') + 'Nuevo estudio</button>' : '') + (P('turnos') || Store.puede('imagenes', 'editar') ? '' : '<button class="btn" data-close>Cerrar</button>'),
+      foot: (Store.puede('aliados', 'editar') && Store.moduloHabilitado('aliados') ? '<button class="btn" id="pd-aliado">' + icon('users') + 'Recomendar aliado</button>' : '') + (P('turnos') ? '<button class="btn" id="pd-turno">' + icon('calendar') + 'Nuevo turno</button>' : '') + (Store.puede('imagenes', 'editar') ? '<button class="btn primary" id="pd-est">' + icon('scan') + 'Nuevo estudio</button>' : '') + (P('turnos') || Store.puede('imagenes', 'editar') ? '' : '<button class="btn" data-close>Cerrar</button>'),
       onMount(m) {
         m.querySelectorAll('[data-est]').forEach((r) => r.onclick = () => { closeModal(); go('#/estudios/' + r.dataset.est); });
         const bt = m.querySelector('#pd-turno'); if (bt) bt.onclick = () => Views.turnoForm(id);
+        const ba = m.querySelector('#pd-aliado'); if (ba) ba.onclick = () => { closeModal(); setTimeout(() => Views.recomendarAliado(id), 30); };
         const be = m.querySelector('#pd-est'); if (be) be.onclick = () => Views.estudioForm(id);
       },
     });

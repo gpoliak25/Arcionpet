@@ -248,5 +248,5 @@
     });
   }
 
-  Object.assign(window.Views, { peluqueria: agenda, peluqueriaFichas: fichas, peluqueriaServicios: servicios, pelFicha: fichaModal, pelTurnoForm: turnoForm });
+  Object.assign(window.Views, { achicarFoto: achicar, peluqueria: agenda, peluqueriaFichas: fichas, peluqueriaServicios: servicios, pelFicha: fichaModal, pelTurnoForm: turnoForm });
 })();
