@@ -8,6 +8,7 @@
     { items: [{ h: '#/inicio', l: 'Inicio', i: 'home', m: 'inicio' }] },
     { id: 'clinica', g: 'Clínica', items: [
       { h: '#/pacientes', l: 'Pacientes', i: 'paw', m: 'pacientes' },
+      { h: '#/tutores', l: 'Tutores', i: 'users', m: 'tutores' },
       { h: '#/hemocomponentes', l: 'Hemocomponentes', i: 'drop', m: 'hemocomponentes', c: () => Store.hemoAlertas().length, hot: true },
     ] },
     { id: 'diagnostico', g: 'Diagnóstico con IA', items: [
@@ -34,6 +35,7 @@
   const ROUTES = {
     inicio: () => Views.inicio(),
     pacientes: () => Views.pacientes(),
+    tutores: (id) => (id ? Views.tutorDetalle(id) : Views.tutores()),
     turnos: () => Views.turnos(),
     estudios: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()),
     imagenes: (id) => (id ? Views.estudioDetalle(id) : Views.estudios()), // alias del nombre nuevo del módulo
@@ -49,7 +51,7 @@
   };
 
   /* Módulo de permisos de cada ruta */
-  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
+  const MODULO = { inicio: 'inicio', pacientes: 'pacientes', tutores: 'tutores', turnos: 'turnos', estudios: 'imagenes', imagenes: 'imagenes', triage: 'triage', informes: 'informes', derivaciones: 'derivaciones', interconsultas: 'interconsultas', hemocomponentes: 'hemocomponentes', calidad: 'calidad', analitica: 'analitica', modelo: 'modelo', arcion: 'arcion' };
   const moduloDeHash = (h) => MODULO[(h || '').replace(/^#\//, '').split('/')[0]];
   function sinAcceso() {
     const u = Store.usuario();

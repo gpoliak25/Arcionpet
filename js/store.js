@@ -167,7 +167,7 @@
     restaurarBackup(clave) { const raw = lsGet(KEY + ':backup:' + clave); if (!raw) return false; lsSet(KEY, raw); return true; },
     cambiarUsuario(id) { if (S.usuarios.some((u) => u.id === id)) { S.usuarioActivo = id; save(); } },
     addPaciente(p, t) {
-      if (t) { t.id = uid('t'); S.tutores.push(t); p.tutorId = t.id; }
+      if (t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); p.tutorId = t.id; }
       p.id = uid('p'); S.pacientes.push(p); save(); return p;
     },
     updatePaciente(id, data) { Object.assign(paciente(id), data); save(); },
@@ -183,13 +183,17 @@
     importarDeRed(rid) {
       const r = S.redPacientes.find((x) => x.id === rid);
       let t = S.tutores.find((x) => x.doc === r.tutor.doc);
-      if (!t) { t = Object.assign({ id: uid('t'), tel: '', email: '' }, r.tutor); S.tutores.push(t); }
+      if (!t) { t = Object.assign({ id: uid('t'), tel: '', email: '' }, { tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, r.tutor); S.tutores.push(t); }
       const p = { id: uid('p'), nombre: r.nombre, especie: r.especie, raza: r.raza, nacimiento: r.nacimiento, sexo: r.sexo, peso: r.peso, tutorId: t.id, origen: 'red' };
       S.pacientes.push(p);
       S.redPacientes = S.redPacientes.filter((x) => x.id !== rid);
       save(); return p;
     },
-    addTutor(t) { t.id = uid('t'); S.tutores.push(t); save(); return t; },
+    addTutor(t) { t = Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t, { id: uid('t') }); S.tutores.push(t); save(); return t; },
+    updateTutor(id, data) { Object.assign(byId('tutores', id), data); save(); },
+    /* Baja lógica: el tutor y su historial se conservan; deja de ofrecerse para nuevas altas. */
+    bajaTutor(id) { Object.assign(byId('tutores', id), { activo: false, fechaBaja: new Date().toISOString() }); save(); },
+    reactivarTutor(id) { const t = byId('tutores', id); t.activo = true; delete t.fechaBaja; save(); },
     addTurno(t) { t.id = uid('tu'); S.turnos.push(t); save(); return t; },
     setTurno(id, estado) { byId('turnos', id).estado = estado; save(); },
     addEstudio(e) { e.id = uid('e'); e.resultado = null; e.confianza = null; e.hallazgos = []; e.derivado = false; S.estudios.push(e); save(); return e; },

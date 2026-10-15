@@ -28,6 +28,17 @@
         return s;
       },
     },
+    {
+      de: 9, a: 10, descripcion: 'Ficha de tutor: tipo de documento, CUIT, domicilio, notas y baja lógica',
+      up(s) {
+        s.tutores = s.tutores.map((t) => Object.assign({ tipoDoc: 'DNI', cuit: '', domicilio: '', notas: '', activo: true }, t));
+        return s;
+      },
+      down(s) {
+        s.tutores = s.tutores.map((t) => { const c = Object.assign({}, t); ['tipoDoc', 'cuit', 'domicilio', 'notas', 'activo', 'fechaBaja'].forEach((k) => delete c[k]); return c; });
+        return s;
+      },
+    },
   ];
 
   const VERSION_BASE = PASOS[0].de;
