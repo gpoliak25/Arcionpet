@@ -329,7 +329,7 @@
         : empty('calendar', 'Sin turnos', '')) + '</div>' +
       '<div class="card"><div class="card-head"><span class="ic" style="color:var(--violet)">' + icon('file') + '</span><h3>Compras</h3>' + (cmp.lista.length ? '<span class="small muted">Total ' + pesos(cmp.total) + '</span>' : '') + '</div>' +
       (cmp.lista.length ? '<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Detalle</th><th>Mascota</th><th>Pago</th><th style="text-align:right">Total</th></tr></thead><tbody>' +
-        cmp.lista.map((v) => '<tr' + (v.estado === 'anulada' ? ' style="opacity:.55"' : '') + '><td class="nowrap">' + fShort(v.fecha) + '</td><td>' + esc((v.items || []).map((i) => i.cantidad + '× ' + i.nombre).join(', ')) + (v.estado === 'anulada' ? ' <span class="badge b-gray">Anulada</span>' : '') + '</td><td>' + esc(v.pacienteId ? nombre(v.pacienteId) : '—') + '</td><td>' + esc(v.medioPago || '') + '</td><td style="text-align:right" class="nowrap">' + pesos(v.total) + '</td></tr>').join('') + '</tbody></table></div>'
+        cmp.lista.map((v) => '<tr' + (v.estado === 'anulada' ? ' style="opacity:.55"' : '') + '><td class="nowrap">' + fShort(v.fecha) + '</td><td>' + esc((v.items || []).map((i) => i.cantidad + '× ' + i.nombre).join(', ')) + (v.estado === 'anulada' ? ' <span class="badge b-gray">Anulada</span>' : '') + '</td><td>' + esc(v.pacienteId ? nombre(v.pacienteId) : '—') + '</td><td>' + esc(Dominio.ventas.MEDIOS[v.medioPago] || '') + '</td><td style="text-align:right" class="nowrap">' + pesos(v.total) + '</td></tr>').join('') + '</tbody></table></div>'
         : empty('file', 'Todavía no hay compras registradas', '')) + '</div>';
     return {
       html, mount(root) {

@@ -148,7 +148,7 @@
     if (S.productos) {
       const ia = inventarioAlertas();
       if (ia.vencidos.length) n.push({ id: 'n-inv-venc', ic: 'alert', t: ia.vencidos.length + (ia.vencidos.length === 1 ? ' lote vencido' : ' lotes vencidos') + ' en farmacia', s: 'Dar de baja en Inventario', go: '#/inventario' });
-      ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/inventario' }); });
+      ia.declaraciones.forEach((d) => { const p = producto(d.productoId) || {}; const r = Dominio.inventario.diasHasta(d.limite, new Date()); n.push({ id: 'n-' + d.id, ic: 'clipboard', t: 'Declarar en SIGTRAZAVET', s: (p.nombre || '') + ' · ' + (['venta_rve', 'autoconsumo'].includes(d.tipo) ? 'en tiempo real' : r < 0 ? 'plazo vencido' : 'quedan ' + r + ' días'), go: '#/inventario' }); });
     }
     hemoAlertas().forEach((u) => {
       const d = daysBetween(new Date(), u.vence);
@@ -183,6 +183,11 @@
     };
   }
 
+  /* ---------- Ventas ---------- */
+  const CLAVES_VENTA = ['productos', 'lotes', 'movimientos', 'declaraciones', 'ventas', 'recetas'];
+  const estadoVentas = () => { const e = { tutores: S.tutores, pacientes: S.pacientes }; CLAVES_VENTA.forEach((k) => { e[k] = S[k]; }); return e; };
+  function aplicarVentas(e) { CLAVES_VENTA.forEach((k) => { S[k] = e[k]; }); save(); }
+
   /* ---------- Mutaciones ---------- */
   const A = {
     reset() { S = M.migrar(clone(SEED)); soloLectura = false; save(); },
@@ -201,6 +206,16 @@
       if (datos.id) { Object.assign(producto(datos.id), datos); save(); return producto(datos.id); }
       const p = Object.assign({ activo: true, requiereReceta: false, sigtrazavet: false, principioActivo: '' }, datos, { id: uid('pr') });
       S.productos.push(p); save(); return p;
+    },
+    /* Ventas: la lógica de dominio valida todo (tutor, stock, receta) y no modifica nada si algo falla. */
+    registrarVenta(venta) {
+      const r = Dominio.ventas.registrar(estadoVentas(), venta, ctxInv({ rol: rol() }));
+      aplicarVentas(r.estado); return r.venta;
+    },
+    anularVenta(ventaId, motivo) {
+      if (!Dominio.permisos.puedeAccion(rol(), 'anularVenta')) throw new Dominio.ventas.ErrorVenta('Solo administración puede anular ventas');
+      const r = Dominio.ventas.anular(estadoVentas(), ventaId, motivo, ctxInv({ rol: rol() }));
+      aplicarVentas(r.estado); return r.venta;
     },
     cambiarUsuario(id) { if (S.usuarios.some((u) => u.id === id)) { S.usuarioActivo = id; save(); } },
     addPaciente(p, t) {

@@ -16,6 +16,7 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 | 6 · Pacientes y turnos | Alta/edición, búsqueda por mascota, raza, tutor o documento, **Buscar en la red** EISPLUS, tutores · Agenda 7/14/21 días, pedidos del **Portal Cliente**, cierre de turnos pasados |
 | — · Tutores | Ficha con contacto, mascotas a cargo, historial de turnos y compras; alta con validación de DNI/CUIT/pasaporte; baja lógica |
 | — · Inventario | Pet shop (alimentos, correas y accesorios, ropa, juguetes) y farmacia (antiparasitarios, medicamentos, vacunas, insumos): stock por lotes, mínimo con alerta, vencimientos a 30 días, ingreso de mercadería, ajustes sin stock negativo y declaraciones SIGTRAZAVET pendientes (Res. SENASA 654/2026, art. 12) |
+| — · Ventas | Punto de venta con tutor obligatorio (y mascota), medios de pago QR, transferencia, efectivo, crédito y débito, descuento de stock FEFO y comprobante. Productos bajo receta solo contra una **RVE** vigente (Res. SENASA 654/2026: CUVE, datos del art. 18 d, 30 días, una sola dispensa) o entrega desde botiquín del veterinario (art. 20). Anulación con reposición de stock (solo administración) |
 | 7 · Imágenes | Carga de radiografía (subida o del conjunto de test del TP) → la **CNN** la clasifica Normal / Incierto / Patológico con su probabilidad, y muestra el Grad-CAM |
 | 8 · Triage | Urgente / A revisar, estado del informe y días de espera |
 | 9 · Informes | Borrador generado por IA, editable, que solo pasa a firmado cuando el veterinario lo revisa y lo firma |
@@ -53,6 +54,10 @@ Los cambios que hagas durante la demo se guardan en el navegador. Para volver a 
 
 Tocá el usuario abajo a la izquierda para cambiar de rol: **Veterinario/a**, **Recepción**, **Peluquería** o **Administración**. El menú, las rutas, el Inicio, las notificaciones y ARCION se adaptan a los permisos de cada rol (matriz en `js/dominio/permisos.js`). La firma de informes es exclusiva del veterinario. Son permisos de interfaz: sin backend no hay seguridad real.
 
+## Receta veterinaria electrónica (Res. SENASA 654/2026)
+
+ArcionPet **no se conecta** con SIGTRAZAVET (no hay una API pública documentada). La RVE se emite en SIGTRAZAVET o SIGTrámites y en ArcionPet se **registra** con su CUVE para validar la venta. Las operaciones que hay que declarar (ventas con RVE en tiempo real, contingencias a 10 días, anulaciones a 20 días) quedan como pendientes en Inventario hasta cargar el número de operación.
+
 ## Datos y migraciones
 
 Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un número de versión de esquema. Al abrir una versión nueva de la app, los datos se **migran** (`js/dominio/migraciones.js`) y antes se guarda una copia intacta en `arcionpet-demo:backup:v<versión>`. Cada migración tiene vuelta atrás. Desde la consola del navegador:
@@ -66,7 +71,7 @@ Los datos viven en el navegador (`localStorage`, clave `arcionpet-demo`) con un 
 npm test
 ```
 
-Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores y stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, anulación).
+Usa el runner de Node (sin dependencias). Cubre migraciones (ida y vuelta sin pérdida de datos), permisos, tutores, stock y vencimientos (lotes, mínimos, FEFO, sin stock negativo, todo o nada, fechas locales) y ventas con receta electrónica (vigencia, titular y animal, cantidades, una sola dispensa, botiquín, anulación y declaraciones SIGTRAZAVET).
 
 ## Estructura
 
@@ -75,13 +80,13 @@ tests/            tests de la lógica de negocio
 index.html        estructura (el menú en 5 áreas plegables se arma en js/app.js)
 css/styles.css    estilos (mismo look que las capturas de la presentación)
 js/data.js        datos de ejemplo
-js/dominio/       lógica de negocio pura (migraciones, permisos, tutores, inventario), testeada con node --test
+js/dominio/       lógica de negocio pura (migraciones, permisos, tutores, inventario, ventas), testeada con node --test
 js/store.js       estado, persistencia, migraciones y métricas
 js/cnn.js         carga de los modelos, inferencia, Grad-CAM, evaluación y reentrenamiento
 js/model/         modelos del TP convertidos a TensorFlow.js + conjunto de test (incrustados para funcionar sin servidor)
 js/vendor/        TensorFlow.js 4.22
 js/ui.js          íconos, modales, avisos y visor de radiografías
-js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, inventario, servicios, red)
+js/vistas/        pantallas, un archivo por área (comun, inicio, clinica, diagnostico, inventario, ventas, servicios, red)
 js/arcion.js      asistente ARCION
 js/app.js         navegación y notificaciones
 ```

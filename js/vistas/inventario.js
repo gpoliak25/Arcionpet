@@ -6,6 +6,8 @@
   const pesos = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
   const hoy = () => new Date();
   const usuarioNombre = (id) => ((S().usuarios || []).find((u) => u.id === id) || {}).nombre || id || '';
+  const TIPO_DECL = { vencimiento: 'Vencimiento', merma: 'Merma', rotura: 'Rotura', robo: 'Robo o hurto', venta_rve: 'Venta con RVE (art. 11)', autoconsumo: 'Autoconsumo de botiquín (art. 20)', anulacion: 'Anulación de operación (art. 8 c)' };
+  const plazoDecl = (d) => { if (d.tipo === 'venta_rve' || d.tipo === 'autoconsumo') return 'en tiempo real'; const r = I().diasHasta(d.limite, hoy()); return r < 0 ? 'plazo vencido' : r === 0 ? 'vence hoy' : 'quedan ' + r + ' días'; };
   const TIPO_MOV = { ingreso: 'Ingreso', venta: 'Venta', anulacion: 'Anulación de venta', ajuste: 'Ajuste', baja_vencimiento: 'Baja por vencimiento' };
 
   function catalogoActual() {
@@ -67,8 +69,8 @@
       '</div>' +
       (vencidos.length ? '<div class="callout red" style="margin-bottom:14px;display:block">' + icon('alert') + ' <b>' + vencidos.length + ' lote' + (vencidos.length > 1 ? 's' : '') + ' vencido' + (vencidos.length > 1 ? 's' : '') + ':</b> no se pueden vender. Dalos de baja para registrarlo en el inventario.' +
         vencidos.map((l) => { const p = Store.producto(l.productoId); return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="grow">' + esc(p.nombre) + ' · lote ' + esc(l.lote) + ' · venció el ' + fDate(l.vence) + ' · ' + l.cantidad + ' u.</span>' + (ajustar ? '<button class="btn sm" data-baja="' + l.id + '">Dar de baja</button>' : '') + '</div>'; }).join('') + '</div>' : '') +
-      (decl.length ? '<div class="callout violet" style="margin-bottom:14px;display:block">' + icon('clipboard') + ' <b>Pendiente de declarar en SIGTRAZAVET</b> (contingencias, Res. SENASA 654/2026, art. 12: 10 días corridos).' +
-        decl.map((d) => { const p = Store.producto(d.productoId) || {}; const r = I().diasHasta(d.limite, hoy()); return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="grow">' + esc(I().MOTIVOS_AJUSTE[d.tipo] || 'Vencimiento') + ' · ' + esc(p.nombre) + ' · lote ' + esc(d.lote) + ' · ' + d.cantidad + ' u. · <b>' + (r < 0 ? 'plazo vencido' : r === 0 ? 'vence hoy' : 'quedan ' + r + ' días') + '</b></span>' + (ajustar ? '<button class="btn sm" data-decl="' + d.id + '">Marcar como declarada</button>' : '') + '</div>'; }).join('') + '</div>' : '') +
+      (decl.length ? '<div class="callout violet" style="margin-bottom:14px;display:block">' + icon('clipboard') + ' <b>Pendiente de declarar en SIGTRAZAVET</b> (Res. SENASA 654/2026: ventas con RVE en tiempo real, art. 11; contingencias dentro de los 10 días, art. 12; anulaciones dentro de los 20 días, art. 8 c).' +
+        decl.map((d) => { const p = Store.producto(d.productoId) || {}; return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="grow">' + esc(TIPO_DECL[d.tipo] || d.tipo) + ' · ' + esc(p.nombre) + ' · lote ' + esc(d.lote) + ' · ' + d.cantidad + ' u.' + (d.cuve ? ' · CUVE ' + esc(d.cuve) : '') + ' · <b>' + plazoDecl(d) + '</b></span>' + (ajustar ? '<button class="btn sm" data-decl="' + d.id + '">Marcar como declarada</button>' : '') + '</div>'; }).join('') + '</div>' : '') +
       '<div class="toolbar">' + searchBox('q-inv', 'Buscar por producto, marca, código o principio activo…', ui.qInv || '') +
       '<select class="filter" id="f-categ"><option value="">Todas las categorías</option>' + I().CATEGORIAS[cat].map((c) => '<option' + (ui.invCateg === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
       '<div class="seg"><button data-al="0" class="' + (ui.invAlertas ? '' : 'on') + '">Todos</button><button data-al="1" class="' + (ui.invAlertas ? 'on' : '') + '">Con alertas</button></div></div>' +
@@ -110,7 +112,7 @@
     const d = S().declaraciones.find((x) => x.id === id), p = Store.producto(d.productoId);
     openModal({
       title: 'Declaración en SIGTRAZAVET',
-      body: '<p class="muted" style="margin-top:0">' + esc(I().MOTIVOS_AJUSTE[d.tipo] || 'Vencimiento') + ' de ' + d.cantidad + ' u. de ' + esc(p.nombre) + ' (lote ' + esc(d.lote) + '). Registrá acá el número de operación que te dio SIGTRAZAVET.</p>' +
+      body: '<p class="muted" style="margin-top:0">' + esc(TIPO_DECL[d.tipo] || d.tipo) + ' · ' + d.cantidad + ' u. de ' + esc(p.nombre) + ' (lote ' + esc(d.lote) + '). Registrá acá el número de operación que te dio SIGTRAZAVET.</p>' +
         '<div class="field"><label>N.º de operación SIGTRAZAVET</label><input name="nro" placeholder="Ej.: 2026-0001234"></div>' +
         '<p class="small muted">ArcionPet no se conecta con SIGTRAZAVET: la declaración se hace en el sistema del SENASA y acá queda el registro.</p>',
       foot: '<button class="btn" data-close>Cancelar</button><button class="btn primary" id="dc-ok">Marcar como declarada</button>',

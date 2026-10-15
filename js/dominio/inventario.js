@@ -19,7 +19,10 @@
   const CONTINGENCIAS = ['vencimiento', 'merma', 'rotura', 'robo'];
 
   const DIA = 86400000;
-  const inicioDia = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  /* Las fechas sin hora ("2026-10-15") se interpretan como fecha local: new Date("2026-10-15") sería medianoche UTC,
+     que en Argentina (UTC−3) cae el día anterior. */
+  const aFecha = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) : new Date(d));
+  const inicioDia = (d) => { const x = aFecha(d); x.setHours(0, 0, 0, 0); return x; };
   const diasHasta = (fecha, hoy) => Math.round((inicioDia(fecha) - inicioDia(hoy)) / DIA);
   const clonar = (o) => JSON.parse(JSON.stringify(o));
   const entero = (n) => Number.isInteger(n) ? n : NaN;
